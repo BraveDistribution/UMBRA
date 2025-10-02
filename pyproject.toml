@@ -32,6 +32,9 @@ dev-dependencies = [
     "pyright>=1.1.0",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["models", "data", "augmentations", "utils", "configs"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
