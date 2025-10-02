@@ -49,7 +49,9 @@ def center_crop(
     start_w = max(0, (W - cw) // 2)
 
     # Crop
-    cropped = volume[:, start_d:start_d + cd, start_h:start_h + ch, start_w:start_w + cw]
+    cropped = volume[
+        :, start_d : start_d + cd, start_h : start_h + ch, start_w : start_w + cw
+    ]
 
     # Pad if volume is smaller than crop_size
     pad_d = max(0, cd - cropped.shape[1])
@@ -60,7 +62,7 @@ def center_crop(
         cropped = np.pad(
             cropped,
             ((0, 0), (0, pad_d), (0, pad_h), (0, pad_w)),
-            mode='constant',
+            mode="constant",
             constant_values=0,
         )
 
@@ -199,13 +201,17 @@ def extract_embeddings_from_checkpoint(
 
                     # Handle NaN/Inf values (same as contrastive_dataset.py)
                     if np.isnan(volume).any() or np.isinf(volume).any():
-                        volume = np.nan_to_num(volume, nan=0.0, posinf=1.0, neginf=0.0, copy=True)
+                        volume = np.nan_to_num(
+                            volume, nan=0.0, posinf=1.0, neginf=0.0, copy=True
+                        )
 
                     # Ensure 4D shape (C, D, H, W) and center crop to 96x96x96
                     volume = center_crop(volume, crop_size=(96, 96, 96))
 
                     # Convert to tensor and add batch dimension
-                    volume_tensor = torch.from_numpy(volume).float().unsqueeze(0)  # [1, C, D, H, W]
+                    volume_tensor = (
+                        torch.from_numpy(volume).float().unsqueeze(0)
+                    )  # [1, C, D, H, W]
                     volume_tensor = volume_tensor.to(device)
 
                     # Extract features using the contrastive projection
@@ -253,7 +259,7 @@ def create_tsne_visualization(
     tsne = TSNE(
         n_components=2,
         perplexity=perplexity,
-        n_iter=n_iter,
+        max_iter=n_iter,  # Changed from n_iter to max_iter in newer sklearn
         random_state=random_state,
         verbose=1,
     )
