@@ -22,6 +22,27 @@ from tqdm import tqdm
 from models.foundation import ContrastiveTransformer
 
 
+def normalize_modality_name(scan_type: str) -> str:
+    """
+    Normalize modality names by removing numeric suffixes.
+
+    Examples:
+        dwi_2 -> dwi
+        scan_10 -> scan
+        flair_3 -> flair
+        t1 -> t1
+
+    Args:
+        scan_type: Original scan type from filename
+
+    Returns:
+        Normalized modality name
+    """
+    # Remove trailing underscore and number (e.g., _2, _10, _123)
+    normalized = re.sub(r"_\d+$", "", scan_type)
+    return normalized
+
+
 def center_crop(
     volume: np.ndarray,
     crop_size: Tuple[int, int, int] = (96, 96, 96),
@@ -220,7 +241,9 @@ def extract_embeddings_from_checkpoint(
                     # Convert to numpy and store
                     embedding_np = embedding.cpu().numpy().squeeze()
                     all_embeddings.append(embedding_np)
-                    all_modalities.append(scan_type)
+                    # Normalize modality name to group variants (e.g., dwi_2 -> dwi)
+                    normalized_modality = normalize_modality_name(scan_type)
+                    all_modalities.append(normalized_modality)
                     all_patients.append(patient)
 
                 except Exception as e:
