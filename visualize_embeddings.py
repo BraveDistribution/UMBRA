@@ -371,6 +371,7 @@ def plot_patient_visualization(
     save_path: Optional[Union[str, Path]] = None,
     figsize: Tuple[int, int] = (14, 10),
     max_patients_to_show: int = 10,
+    min_scans_per_patient: int = 3,
 ) -> None:
     """
     Create visualization colored by patient ID to show patient-specific clustering.
@@ -382,12 +383,27 @@ def plot_patient_visualization(
         save_path: Path to save figure (optional)
         figsize: Figure size
         max_patients_to_show: Maximum number of patients to color distinctly
+        min_scans_per_patient: Minimum number of scans required to show patient
     """
     sns.set_style("whitegrid")
     plt.figure(figsize=figsize)
 
-    # Get unique patients
-    unique_patients = sorted(list(set(patient_ids)))[:max_patients_to_show]
+    # Count scans per patient and filter
+    from collections import Counter
+    patient_counts = Counter(patient_ids)
+
+    # Get patients with at least min_scans_per_patient scans
+    eligible_patients = [
+        patient for patient, count in patient_counts.items()
+        if count >= min_scans_per_patient
+    ]
+
+    print(f"\nPatients with >= {min_scans_per_patient} scans: {len(eligible_patients)}")
+    for patient in sorted(eligible_patients):
+        print(f"  Patient {patient}: {patient_counts[patient]} scans")
+
+    # Select up to max_patients_to_show from eligible patients
+    unique_patients = sorted(eligible_patients)[:max_patients_to_show]
     colors = plt.cm.tab20(np.linspace(0, 1, len(unique_patients)))
     patient_to_color = dict(zip(unique_patients, colors))
 
@@ -420,7 +436,8 @@ def plot_patient_visualization(
     plt.xlabel("t-SNE Component 1", fontsize=14, fontweight="bold")
     plt.ylabel("t-SNE Component 2", fontsize=14, fontweight="bold")
     plt.title(
-        "Patient-Specific Clustering\nDifferent colors = Different patients",
+        f"Patient-Specific Clustering (≥{min_scans_per_patient} scans per patient)\n"
+        "Different colors = Different patients",
         fontsize=16,
         fontweight="bold",
         pad=20,
