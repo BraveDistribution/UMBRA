@@ -136,6 +136,7 @@ def extract_embeddings_from_checkpoint(
     data_dir: Union[str, Path],
     max_samples_per_modality: Optional[int] = 100,
     split: str = "val",
+    ignore_scan_label: bool = True,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
 ) -> Tuple[np.ndarray, List[str], List[str]]:
     """
@@ -147,6 +148,7 @@ def extract_embeddings_from_checkpoint(
                   sub_{patient}_ses_{session}_{scan_type}.npy
         max_samples_per_modality: Maximum number of samples to extract per modality
         split: Which split to use ('train', 'val', or 'all')
+        ignore_scan_label: Skip files with scan_type starting with 'scan'
         device: Device to run inference on
 
     Returns:
@@ -190,6 +192,10 @@ def extract_embeddings_from_checkpoint(
 
             # Only include files from the selected split
             if patient not in allowed_patients:
+                continue
+
+            # Skip 'scan' modality if ignore_scan_label is True
+            if ignore_scan_label and scan_type.startswith("scan"):
                 continue
 
             if scan_type not in modality_files:
@@ -501,6 +507,7 @@ def main(
     output_dir: Union[str, Path] = "visualizations",
     max_samples_per_modality: int = 100,
     split: str = "val",
+    ignore_scan_label: bool = True,
     perplexity: int = 30,
     n_iter: int = 1000,
 ) -> None:
@@ -513,6 +520,7 @@ def main(
         output_dir: Directory to save visualizations
         max_samples_per_modality: Maximum samples per modality
         split: Which split to use ('train', 'val', or 'all')
+        ignore_scan_label: Skip files with scan_type starting with 'scan'
         perplexity: t-SNE perplexity
         n_iter: t-SNE iterations
     """
@@ -526,6 +534,7 @@ def main(
         data_dir=data_dir,
         max_samples_per_modality=max_samples_per_modality,
         split=split,
+        ignore_scan_label=ignore_scan_label,
     )
 
     # Save embeddings for future use
@@ -609,6 +618,18 @@ if __name__ == "__main__":
         help="Which split to use: 'train', 'val', or 'all' (default: val)",
     )
     parser.add_argument(
+        "--ignore_scan_label",
+        action="store_true",
+        default=True,
+        help="Skip files with scan_type starting with 'scan' (default: True)",
+    )
+    parser.add_argument(
+        "--include_scan_label",
+        action="store_false",
+        dest="ignore_scan_label",
+        help="Include files with scan_type starting with 'scan'",
+    )
+    parser.add_argument(
         "--perplexity",
         type=int,
         default=30,
@@ -629,6 +650,7 @@ if __name__ == "__main__":
         output_dir=args.output_dir,
         max_samples_per_modality=args.max_samples,
         split=args.split,
+        ignore_scan_label=args.ignore_scan_label,
         perplexity=args.perplexity,
         n_iter=args.n_iter,
     )
