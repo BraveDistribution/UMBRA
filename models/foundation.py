@@ -3,11 +3,15 @@ Foundation models for medical image analysis.
 
 This module contains implementations of self-supervised pre-training models
 and fine-tuning architectures for 3D medical image segmentation, including:
-- ContrastiveTransformer: MoCo-based contrastive learning with masked autoencoding
+
+Architecture:
+- MAEPretrainer: Base class for Masked Autoencoder (MAE) pretraining
+- ContrastiveMAEPretrainer: Extends MAE with MoCo-based contrastive learning
+- ContrastiveTransformer: Alias for ContrastiveMAEPretrainer (backward compatibility)
 - SegmentationFineTuner: Parameter-efficient fine-tuning with LoRA
 """
 
-from typing import Any, Dict, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 try:
     import pytorch_lightning as pl
@@ -29,13 +33,239 @@ except ImportError:
 from augmentations.mask import random_mask
 
 
-class ContrastiveTransformer(pl.LightningModule):  # type: ignore
+class MAEPretrainer(pl.LightningModule):  # type: ignore
     """
-    Self-supervised learning model combining Masked Autoencoding (MAE) and
-    Momentum Contrastive Learning (MoCo) for 3D medical images.
+    Base class for Masked Autoencoder (MAE) pretraining on 3D medical images.
+
+    This model learns visual representations by reconstructing masked input volumes.
+    The encoder is based on Swin-UNETR architecture.
+
+    Args:
+        patch_size: Size of patches for Swin Transformer (default: (4, 4, 4))
+        learning_rate: Initial learning rate (default: 1e-4)
+        img_size: Input image dimensions (default: (96, 96, 96))
+        feature_size: Base feature dimension for Swin-UNETR (default: 24)
+        mask_ratio: Ratio of volume to mask for MAE (default: 0.6)
+        warmup_epochs: Number of warmup epochs (default: 1)
+        max_epochs: Total number of training epochs (default: 30)
+        min_lr: Minimum learning rate for cosine annealing (default: 1e-5)
+        pretraining_mode: Mode for pretraining ('mae_only', 'contrastive_only', 'combined')
+    """
+
+    def __init__(
+        self,
+        patch_size: Sequence[int] = (4, 4, 4),
+        learning_rate: float = 1e-4,
+        img_size: Tuple[int, int, int] = (96, 96, 96),
+        feature_size: int = 24,
+        mask_ratio: float = 0.6,
+        warmup_epochs: int = 1,
+        max_epochs: int = 30,
+        min_lr: float = 1e-5,
+        pretraining_mode: str = "mae_only",
+    ) -> None:
+        super().__init__()
+        self.save_hyperparameters()
+
+        # Store hyperparameters as instance attributes
+        self.warmup_epochs: int = warmup_epochs
+        self.max_epochs: int = max_epochs
+        self.min_lr: float = min_lr
+        self.mask_ratio: float = mask_ratio
+        self.learning_rate: float = learning_rate
+        self.pretraining_mode: str = pretraining_mode
+
+        # Type hints for PyTorch Lightning attributes
+        self.trainer: Optional[Any]
+
+        if SwinUNETR is None:
+            raise ImportError("monai package is required for SwinUNETR")
+
+        # Encoder (Swin-UNETR)
+        self.encoder: Any = SwinUNETR(
+            in_channels=1,
+            out_channels=1,
+            feature_size=feature_size,
+            use_checkpoint=True,
+            use_v2=True,
+        )
+
+    def forward_encoder(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through encoder only.
+
+        Args:
+            x: Input tensor
+
+        Returns:
+            Encoded features
+        """
+        features: torch.Tensor = self.encoder.swinViT(x)[-1]
+        return features
+
+    def forward_mae(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Masked autoencoding forward pass.
+
+        Args:
+            x: Input tensor
+
+        Returns:
+            Tuple of (reconstruction, mask)
+        """
+        masked_x: torch.Tensor
+        mask: torch.Tensor
+        masked_x, mask = random_mask(x, self.mask_ratio, 4)
+        reconstruction: torch.Tensor = self.encoder(masked_x)
+        return reconstruction, mask
+
+    def training_step(
+        self, batch: Dict[str, torch.Tensor], batch_idx: int, dataloader_idx: int = 0
+    ) -> torch.Tensor:
+        """
+        Training step for MAE.
+
+        Args:
+            batch: Dictionary containing 'volume' key
+            batch_idx: Batch index
+            dataloader_idx: Index of the dataloader
+
+        Returns:
+            MAE loss
+        """
+        # Handle multiple dataloaders (combined mode)
+        if isinstance(batch, list):
+            actual_batch = (
+                batch[dataloader_idx] if dataloader_idx < len(batch) else batch[0]
+            )
+        else:
+            actual_batch = batch
+
+        volume: torch.Tensor = actual_batch["volume"]
+
+        # MAE loss
+        recon: torch.Tensor
+        mask: torch.Tensor
+        recon, mask = self.forward_mae(volume)
+        mae_loss: torch.Tensor = F.mse_loss(recon[mask], volume[mask])
+
+        # Logging
+        self.log_dict(
+            {
+                "train/loss_mae": mae_loss,
+                "train/mae_loss": mae_loss,
+            },
+            prog_bar=True,
+            on_step=True,
+            on_epoch=True,
+            sync_dist=True,
+        )
+
+        return mae_loss
+
+    def validation_step(
+        self, batch: Dict[str, torch.Tensor], batch_idx: int, dataloader_idx: int = 0
+    ) -> torch.Tensor:
+        """
+        Validation step for MAE.
+
+        Note: In validation, PyTorch Lightning calls this separately for each dataloader
+        with proper dataloader_idx, so batch is always a single dict (not a list).
+
+        Args:
+            batch: Dictionary containing 'volume' key
+            batch_idx: Batch index
+            dataloader_idx: Index of the dataloader
+
+        Returns:
+            MAE loss
+        """
+        # In validation, batch is always a dict (not a list)
+        volume: torch.Tensor = batch["volume"]
+
+        # MAE loss
+        recon: torch.Tensor
+        mask: torch.Tensor
+        recon, mask = self.forward_mae(volume)
+        mae_loss: torch.Tensor = F.mse_loss(recon[mask], volume[mask])
+
+        # Logging
+        self.log_dict(
+            {
+                "val/loss_mae": mae_loss,
+                "val/mae_loss": mae_loss,
+            },
+            prog_bar=False,
+            on_epoch=True,
+            sync_dist=True,
+        )
+
+        return mae_loss
+
+    def configure_optimizers(self) -> Any:
+        """
+        Configure optimizer and learning rate scheduler.
+
+        Returns:
+            Dictionary containing optimizer and scheduler configuration
+        """
+        optimizer: torch.optim.AdamW = torch.optim.AdamW(
+            self.parameters(), lr=self.learning_rate, weight_decay=0.01
+        )
+
+        # Calculate total steps
+        if self.trainer is None:
+            raise RuntimeError(
+                "Trainer must be set before calling configure_optimizers"
+            )
+        num_training_steps: int = self.trainer.estimated_stepping_batches
+        num_warmup_steps: int = int(
+            num_training_steps * self.warmup_epochs / self.max_epochs
+        )
+
+        # Warmup scheduler
+        warmup_scheduler: torch.optim.lr_scheduler.LinearLR = (
+            torch.optim.lr_scheduler.LinearLR(
+                optimizer,
+                start_factor=1e-6,
+                end_factor=1.0,
+                total_iters=num_warmup_steps,
+            )
+        )
+
+        # Cosine decay scheduler
+        cosine_scheduler: torch.optim.lr_scheduler.CosineAnnealingLR = (
+            torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=(num_training_steps - num_warmup_steps),
+                eta_min=self.min_lr,
+            )
+        )
+
+        # Chain schedulers together
+        lr_scheduler: torch.optim.lr_scheduler.SequentialLR = (
+            torch.optim.lr_scheduler.SequentialLR(
+                optimizer,
+                schedulers=[warmup_scheduler, cosine_scheduler],
+                milestones=[num_warmup_steps],
+            )
+        )
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": lr_scheduler,
+                "interval": "step",
+            },
+        }
+
+
+class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
+    """
+    Extends MAEPretrainer with Momentum Contrastive Learning (MoCo).
 
     This model learns robust visual representations by:
-    1. Reconstructing masked input volumes (MAE objective)
+    1. Reconstructing masked input volumes (MAE objective from base class)
     2. Maximizing agreement between augmented views (MoCo objective)
 
     Args:
@@ -50,6 +280,7 @@ class ContrastiveTransformer(pl.LightningModule):  # type: ignore
         warmup_epochs: Number of warmup epochs (default: 1)
         max_epochs: Total number of training epochs (default: 30)
         min_lr: Minimum learning rate for cosine annealing (default: 1e-5)
+        pretraining_mode: Mode for pretraining ('mae_only', 'contrastive_only', 'combined')
     """
 
     def __init__(
@@ -65,34 +296,28 @@ class ContrastiveTransformer(pl.LightningModule):  # type: ignore
         warmup_epochs: int = 1,
         max_epochs: int = 30,
         min_lr: float = 1e-5,
+        pretraining_mode: str = "contrastive_only",
     ) -> None:
-        super().__init__()
-        self.save_hyperparameters()
+        # Initialize base class (MAE components)
+        super().__init__(
+            patch_size=patch_size,
+            learning_rate=learning_rate,
+            img_size=img_size,
+            feature_size=feature_size,
+            mask_ratio=mask_ratio,
+            warmup_epochs=warmup_epochs,
+            max_epochs=max_epochs,
+            min_lr=min_lr,
+            pretraining_mode=pretraining_mode,
+        )
 
-        # Store hyperparameters as instance attributes
-        self.warmup_epochs: int = warmup_epochs
-        self.max_epochs: int = max_epochs
-        self.min_lr: float = min_lr
+        # Store contrastive-specific hyperparameters
         self.temperature: float = temperature
         self.momentum: float = momentum
         self.queue_size: int = queue_size
-        self.mask_ratio: float = mask_ratio
-        self.learning_rate: float = learning_rate
-
-        # Type hints for PyTorch Lightning attributes
-        self.trainer: Optional[Any]  # Trainer type from pl
 
         if SwinUNETR is None:
             raise ImportError("monai package is required for SwinUNETR")
-
-        # Query encoder
-        self.encoder: Any = SwinUNETR(
-            in_channels=1,
-            out_channels=1,
-            feature_size=feature_size,
-            use_checkpoint=True,
-            use_v2=True,
-        )
 
         # Key encoder (momentum-updated)
         self.encoder_m: Any = SwinUNETR(
@@ -145,9 +370,16 @@ class ContrastiveTransformer(pl.LightningModule):  # type: ignore
         self.register_buffer("queue", F.normalize(torch.randn(128, queue_size), dim=0))
         self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
 
+        # Store patient/session metadata for queue (for filtering cross-session negatives)
+        # Shape: (queue_size, 2) where columns are [patient_id, session_id]
+        self.register_buffer(
+            "queue_metadata", torch.zeros(queue_size, 2, dtype=torch.long)
+        )
+
         # Type hints for buffers (helps Pylance)
         self.queue: torch.Tensor
         self.queue_ptr: torch.Tensor
+        self.queue_metadata: torch.Tensor
 
     @torch.no_grad()
     def _momentum_update(self) -> None:
@@ -169,15 +401,17 @@ class ContrastiveTransformer(pl.LightningModule):  # type: ignore
             )
 
     @torch.no_grad()
-    def _dequeue_and_enqueue(self, keys: torch.Tensor) -> None:
+    def _dequeue_and_enqueue(self, keys: torch.Tensor, metadata: torch.Tensor) -> None:
         """
-        Update the MoCo queue with new key features.
+        Update the MoCo queue with new key features and their metadata.
 
         Args:
             keys: New key features to add to the queue
+            metadata: Patient/session metadata (batch_size, 2) where columns are [patient_id, session_id]
         """
         if self.trainer is not None and self.trainer.world_size > 1:
             keys = self._concat_all_gather(keys)
+            metadata = self._concat_all_gather(metadata)
 
         batch_size: int = keys.shape[0]
         ptr: int = int(self.queue_ptr)
@@ -187,9 +421,14 @@ class ContrastiveTransformer(pl.LightningModule):  # type: ignore
             self.queue[:, : batch_size - (self.queue_size - ptr)] = keys[
                 self.queue_size - ptr :
             ].T
+            self.queue_metadata[ptr:, :] = metadata[: self.queue_size - ptr]
+            self.queue_metadata[: batch_size - (self.queue_size - ptr), :] = metadata[
+                self.queue_size - ptr :
+            ]
             ptr = batch_size - (self.queue_size - ptr)
         else:
             self.queue[:, ptr : ptr + batch_size] = keys.T
+            self.queue_metadata[ptr : ptr + batch_size, :] = metadata
             ptr = (ptr + batch_size) % self.queue_size
 
         self.queue_ptr[0] = ptr
@@ -279,13 +518,16 @@ class ContrastiveTransformer(pl.LightningModule):  # type: ignore
         z: torch.Tensor = self.projection_m(features)
         return F.normalize(z, dim=1)
 
-    def contrastive_loss(self, q: torch.Tensor, k: torch.Tensor) -> torch.Tensor:
+    def contrastive_loss(
+        self, q: torch.Tensor, k: torch.Tensor, patient_ids: torch.Tensor
+    ) -> torch.Tensor:
         """
-        Compute InfoNCE loss for MoCo with numerical stability.
+        Compute InfoNCE loss for MoCo with numerical stability and cross-session filtering.
 
         Args:
-            q: Query embeddings
-            k: Key embeddings
+            q: Query embeddings (batch_size, embedding_dim)
+            k: Key embeddings (batch_size, embedding_dim)
+            patient_ids: Patient IDs for current batch (batch_size,)
 
         Returns:
             Contrastive loss value
@@ -296,6 +538,17 @@ class ContrastiveTransformer(pl.LightningModule):  # type: ignore
         l_neg: torch.Tensor = torch.einsum(
             "nc,ck->nk", [q, self.queue.clone().detach()]
         )
+
+        # Filter out negatives from the same patient
+        # queue_metadata[:, 0] contains patient IDs
+        queue_patient_ids = self.queue_metadata[:, 0]  # (queue_size,)
+
+        # Create mask: True where queue patient != current patient
+        # Shape: (batch_size, queue_size)
+        mask = patient_ids.unsqueeze(1) != queue_patient_ids.unsqueeze(0)
+
+        # Apply mask: set same-patient negatives to very negative value
+        l_neg = torch.where(mask, l_neg, torch.tensor(-10.0, device=l_neg.device))
 
         # Clamp for numerical stability
         l_pos = torch.clamp(l_pos, min=-1.0, max=1.0)
@@ -317,6 +570,112 @@ class ContrastiveTransformer(pl.LightningModule):  # type: ignore
         )
         return F.cross_entropy(logits, labels)
 
+    def _process_contrastive_batch(
+        self, batch: Dict[str, torch.Tensor], is_training: bool = True
+    ) -> torch.Tensor:
+        """Process a contrastive batch and return the loss."""
+        view1: torch.Tensor = batch["vol1"]
+        view2: torch.Tensor = batch["vol2"]
+
+        # Extract patient and session metadata
+        patient_ids: torch.Tensor = batch["patient"]
+        session_ids: torch.Tensor = batch["session"]
+
+        # Convert string IDs to integers for storage
+        patient_ids_int = torch.tensor(
+            [int(p) for p in patient_ids], dtype=torch.long, device=view1.device
+        )
+        session_ids_int = torch.tensor(
+            [int(s) for s in session_ids], dtype=torch.long, device=view1.device
+        )
+
+        # MAE loss on both views (only in combined mode)
+        if self.pretraining_mode == "combined":
+            recon1, mask1 = self.forward_mae(view1)
+            recon2, mask2 = self.forward_mae(view2)
+            loss_view1 = F.mse_loss(recon1[mask1], view1[mask1])
+            loss_view2 = F.mse_loss(recon2[mask2], view2[mask2])
+            mae_loss = 0.5 * (loss_view1 + loss_view2)
+        else:
+            mae_loss = torch.tensor(0.0, device=view1.device)
+
+        # Update momentum encoder (only during training)
+        if is_training:
+            self._momentum_update()
+
+        # Compute query embeddings
+        q1 = self.forward_contrastive(view1)
+        q2 = self.forward_contrastive(view2)
+
+        # Compute key embeddings (no gradient)
+        with torch.no_grad():
+            k1 = self.forward_momentum(view1)
+            k2 = self.forward_momentum(view2)
+
+        # Cross-view contrastive loss with patient filtering
+        loss_12 = self.contrastive_loss(q1, k2, patient_ids_int)
+        loss_21 = self.contrastive_loss(q2, k1, patient_ids_int)
+        contrastive_loss = 0.5 * (loss_12 + loss_21)
+
+        # Update queue (only during training)
+        if is_training:
+            # Create metadata tensor for queue
+            metadata = torch.stack(
+                [
+                    torch.cat([patient_ids_int, patient_ids_int]),
+                    torch.cat([session_ids_int, session_ids_int]),
+                ],
+                dim=1,
+            )
+            self._dequeue_and_enqueue(torch.cat([k1, k2]), metadata)
+
+        # Total loss
+        if self.pretraining_mode == "contrastive_only":
+            total_loss = contrastive_loss
+        else:
+            total_loss = mae_loss + contrastive_loss
+
+        # Logging
+        prefix = "train" if is_training else "val"
+        self.log_dict(
+            {
+                f"{prefix}/loss_contrastive": total_loss,
+                f"{prefix}/mae_loss_contrastive": mae_loss,
+                f"{prefix}/contrastive_loss": contrastive_loss,
+            },
+            prog_bar=True,
+            on_step=True,
+            on_epoch=True,
+            sync_dist=True,
+        )
+
+        return total_loss
+
+    def _process_mae_batch(
+        self, batch: Dict[str, torch.Tensor], is_training: bool = True
+    ) -> torch.Tensor:
+        """Process an MAE batch and return the loss."""
+        volume: torch.Tensor = batch["volume"]
+
+        # MAE loss only
+        recon, mask = self.forward_mae(volume)
+        mae_loss = F.mse_loss(recon[mask], volume[mask])
+
+        # Logging
+        prefix = "train" if is_training else "val"
+        self.log_dict(
+            {
+                f"{prefix}/loss_mae_only": mae_loss,
+                f"{prefix}/mae_loss_only": mae_loss,
+            },
+            prog_bar=True,
+            on_step=True,
+            on_epoch=True,
+            sync_dist=True,
+        )
+
+        return mae_loss
+
     def training_step(
         self, batch: Dict[str, torch.Tensor], batch_idx: int, dataloader_idx: int = 0
     ) -> torch.Tensor:
@@ -325,91 +684,65 @@ class ContrastiveTransformer(pl.LightningModule):  # type: ignore
 
         Args:
             batch: Dictionary containing either:
-                   - 'vol1' and 'vol2' (contrastive pairs) when dataloader_idx=0
-                   - 'volume' (single volume) when dataloader_idx=1 (MAE only)
+                   - 'vol1' and 'vol2' (contrastive pairs) when dataloader_idx=0 (contrastive mode)
+                   - 'volume' (single volume) when dataloader_idx=0 (mae_only mode) or dataloader_idx=1 (combined mode)
+                   - List of [contrastive_batch, mae_batch] in combined mode
             batch_idx: Batch index
-            dataloader_idx: Index of the dataloader (0=contrastive+MAE, 1=MAE only)
+            dataloader_idx: Index of the dataloader (0=contrastive or mae_only, 1=MAE only in combined mode)
 
         Returns:
             Total loss
         """
-        # Dataloader 0: Contrastive pairs (vol1, vol2) - apply both MAE and contrastive loss
-        if dataloader_idx == 0:
-            view1: torch.Tensor = batch["vol1"]
-            view2: torch.Tensor = batch["vol2"]
+        # In combined mode, PyTorch Lightning may pass batches as a list
+        # We need to handle both dataloaders properly
+        if self.pretraining_mode == "combined" and isinstance(batch, list):
+            # Combined mode with multiple dataloaders
+            # Process both dataloaders and combine losses
+            contrastive_batch = batch[0]  # Contrastive pairs
+            mae_batch = batch[1] if len(batch) > 1 else None  # MAE singles
 
-            # MAE loss on both views
-            recon1: torch.Tensor
-            mask1: torch.Tensor
-            recon1, mask1 = self.forward_mae(view1)
-            recon2: torch.Tensor
-            mask2: torch.Tensor
-            recon2, mask2 = self.forward_mae(view2)
-            loss_view1: torch.Tensor = F.mse_loss(recon1[mask1], view1[mask1])
-            loss_view2: torch.Tensor = F.mse_loss(recon2[mask2], view2[mask2])
-            mae_loss: torch.Tensor = 0.5 * (loss_view1 + loss_view2)
+            total_loss = torch.tensor(0.0, device=self.device)
 
-            # Update momentum encoder
-            self._momentum_update()
+            # Process contrastive batch if it has data
+            if (
+                contrastive_batch is not None
+                and len(contrastive_batch.get("vol1", [])) > 0
+            ):
+                contrastive_loss = self._process_contrastive_batch(
+                    contrastive_batch, is_training=True
+                )
+                total_loss = total_loss + contrastive_loss
 
-            # Compute query embeddings
-            q1: torch.Tensor = self.forward_contrastive(view1)
-            q2: torch.Tensor = self.forward_contrastive(view2)
-
-            # Compute key embeddings (no gradient)
-            with torch.no_grad():
-                k1: torch.Tensor = self.forward_momentum(view1)
-                k2: torch.Tensor = self.forward_momentum(view2)
-
-            # Cross-view contrastive loss
-            loss_12: torch.Tensor = self.contrastive_loss(q1, k2)
-            loss_21: torch.Tensor = self.contrastive_loss(q2, k1)
-            contrastive_loss: torch.Tensor = 0.5 * (loss_12 + loss_21)
-
-            # Update queue
-            self._dequeue_and_enqueue(torch.cat([k1, k2]))
-
-            # Total loss
-            total_loss: torch.Tensor = mae_loss + contrastive_loss
-
-            # Logging
-            self.log_dict(
-                {
-                    "train/loss_contrastive": total_loss,
-                    "train/mae_loss_contrastive": mae_loss,
-                    "train/contrastive_loss": contrastive_loss,
-                },
-                prog_bar=True,
-                on_step=True,
-                on_epoch=True,
-                sync_dist=True,
-            )
+            # Process MAE batch if it has data
+            if mae_batch is not None and len(mae_batch.get("volume", [])) > 0:
+                mae_loss = self._process_mae_batch(mae_batch, is_training=True)
+                total_loss = total_loss + mae_loss
 
             return total_loss
 
+        else:
+            # Single dataloader mode or non-list batch
+            actual_batch = batch
+
+        # Determine batch type by checking keys
+        # - Contrastive batches have 'vol1' and 'vol2'
+        # - MAE batches have 'volume'
+        is_mae_only_batch = (
+            self.pretraining_mode == "mae_only"  # MAE-only mode
+            or (
+                isinstance(actual_batch, dict)
+                and "volume" in actual_batch
+                and "vol1" not in actual_batch
+            )
+        )
+
+        # Dataloader 0 with contrastive pairs (contrastive_only or combined mode)
+        if not is_mae_only_batch:
+            return self._process_contrastive_batch(actual_batch, is_training=True)
+
         # Dataloader 1: Single volumes (MAE only, includes scan_* files)
         else:
-            volume: torch.Tensor = batch["volume"]
-
-            # MAE loss only
-            recon: torch.Tensor
-            mask: torch.Tensor
-            recon, mask = self.forward_mae(volume)
-            mae_loss: torch.Tensor = F.mse_loss(recon[mask], volume[mask])
-
-            # Logging
-            self.log_dict(
-                {
-                    "train/loss_mae_only": mae_loss,
-                    "train/mae_loss_only": mae_loss,
-                },
-                prog_bar=True,
-                on_step=True,
-                on_epoch=True,
-                sync_dist=True,
-            )
-
-            return mae_loss
+            return self._process_mae_batch(actual_batch, is_training=True)
 
     def validation_step(
         self, batch: Dict[str, torch.Tensor], batch_idx: int, dataloader_idx: int = 0
@@ -417,78 +750,42 @@ class ContrastiveTransformer(pl.LightningModule):  # type: ignore
         """
         Validation step.
 
+        Note: In validation, PyTorch Lightning calls this method SEPARATELY for each
+        dataloader with proper dataloader_idx (0, 1, 2, ...), unlike training where
+        all batches are combined into a list.
+
         Args:
             batch: Dictionary containing either:
                    - 'vol1' and 'vol2' (contrastive pairs) when dataloader_idx=0
-                   - 'volume' (single volume) when dataloader_idx=1 (MAE only)
+                   - 'volume' (single volume) when dataloader_idx=1 (combined mode)
             batch_idx: Batch index
-            dataloader_idx: Index of the dataloader (0=contrastive+MAE, 1=MAE only)
+            dataloader_idx: Index of the dataloader (0=contrastive, 1=MAE in combined mode)
 
         Returns:
             Total loss
         """
-        # Dataloader 0: Contrastive pairs (vol1, vol2) - apply both MAE and contrastive loss
-        if dataloader_idx == 0:
-            view1: torch.Tensor = batch["vol1"]
-            view2: torch.Tensor = batch["vol2"]
+        # In validation, batch is always a single dict (not a list)
+        # PyTorch Lightning calls validation_step separately for each dataloader
+        actual_batch = batch
 
-            # MAE loss
-            recon1: torch.Tensor
-            mask1: torch.Tensor
-            recon1, mask1 = self.forward_mae(view1)
-            recon2: torch.Tensor
-            mask2: torch.Tensor
-            recon2, mask2 = self.forward_mae(view2)
-            loss_view1: torch.Tensor = F.mse_loss(recon1[mask1], view1[mask1])
-            loss_view2: torch.Tensor = F.mse_loss(recon2[mask2], view2[mask2])
-            mae_loss: torch.Tensor = 0.5 * (loss_view1 + loss_view2)
-
-            # Contrastive loss (no momentum update in validation)
-            q1: torch.Tensor = self.forward_contrastive(view1)
-            q2: torch.Tensor = self.forward_contrastive(view2)
-            k1: torch.Tensor = self.forward_momentum(view1)
-            k2: torch.Tensor = self.forward_momentum(view2)
-
-            loss_12: torch.Tensor = self.contrastive_loss(q1, k2)
-            loss_21: torch.Tensor = self.contrastive_loss(q2, k1)
-            contrastive_loss: torch.Tensor = 0.5 * (loss_12 + loss_21)
-
-            total_loss: torch.Tensor = mae_loss + contrastive_loss
-
-            self.log_dict(
-                {
-                    "val/loss_contrastive": total_loss,
-                    "val/mae_loss_contrastive": mae_loss,
-                    "val/contrastive_loss": contrastive_loss,
-                },
-                prog_bar=False,
-                on_epoch=True,
-                sync_dist=True,
+        # Check if we're in mae_only mode or processing MAE dataloader
+        is_mae_only_batch = (
+            dataloader_idx == 1  # Combined mode, MAE dataloader
+            or self.pretraining_mode == "mae_only"
+            or (
+                isinstance(actual_batch, dict)
+                and "volume" in actual_batch
+                and "vol1" not in actual_batch
             )
+        )
 
-            return total_loss
+        # Dataloader 0 with contrastive pairs OR combined mode contrastive dataloader
+        if not is_mae_only_batch:
+            return self._process_contrastive_batch(actual_batch, is_training=False)
 
         # Dataloader 1: Single volumes (MAE only, includes scan_* files)
         else:
-            volume: torch.Tensor = batch["volume"]
-
-            # MAE loss only
-            recon: torch.Tensor
-            mask: torch.Tensor
-            recon, mask = self.forward_mae(volume)
-            mae_loss: torch.Tensor = F.mse_loss(recon[mask], volume[mask])
-
-            self.log_dict(
-                {
-                    "val/loss_mae_only": mae_loss,
-                    "val/mae_loss_only": mae_loss,
-                },
-                prog_bar=False,
-                on_epoch=True,
-                sync_dist=True,
-            )
-
-            return mae_loss
+            return self._process_mae_batch(actual_batch, is_training=False)
 
     def configure_optimizers(self) -> Any:
         """
@@ -546,3 +843,7 @@ class ContrastiveTransformer(pl.LightningModule):  # type: ignore
                 "interval": "step",
             },
         }
+
+
+# Backward compatibility alias
+ContrastiveTransformer = ContrastiveMAEPretrainer

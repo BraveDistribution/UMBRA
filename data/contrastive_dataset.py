@@ -21,9 +21,8 @@ except ImportError:
             return pickle.load(f)
 
 
-SESSION_RE: re.Pattern[str] = re.compile(
-    r"sub_(?P<patient>\d+)_ses_(?P<session>\d+)_(?P<scan_type>.+)\.npy"
-)
+# Pattern for hierarchical directory structure: sub_X/ses_Y/modality.npy
+MODALITY_RE: re.Pattern[str] = re.compile(r"(?P<scan_type>.+?)(?:_\d+)?\.npy")
 
 
 class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
@@ -61,45 +60,71 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
 
     def _load_volume_and_header(self, file: str) -> Tuple[NDArray[np.float32], Any]:
         vol: NDArray[np.float32] = self._load_volume(file)
-        header: Any = load_pickle(file[: -len(".npy")] + ".pkl")
+        yaml_path: str = file[: -len(".npy")] + ".yaml"
+        pkl_path: str = file[: -len(".npy")] + ".pkl"
+
+        header: Any = None
+        if os.path.exists(yaml_path):
+            import yaml
+            with open(yaml_path, 'r') as f:
+                header = yaml.safe_load(f)
+        elif os.path.exists(pkl_path):
+            header = load_pickle(pkl_path)
+
         if np.isnan(vol).any() or np.isinf(vol).any():
             vol = np.nan_to_num(vol, nan=0.0, posinf=1.0, neginf=0.0, copy=True)
         return vol, header
 
     def populate_paths(self) -> None:
-        """patients_sessions: {patient: {session: [full_paths...]}}"""
+        """Walk hierarchical directory structure: data_dir/sub_X/ses_Y/*.npy
+
+        Structure:
+        ├── sub_1
+        │   └── ses_1
+        │       ├── t1.npy
+        │       ├── t1_2.npy
+        │       └── flair.npy
+        """
         self.patients_sessions = {}
+        data_path: Path = Path(self.data_dir)
 
-        for filename in os.listdir(self.data_dir):
-            if not filename.endswith(".npy"):
+        # Walk through sub_X directories
+        for patient_dir in data_path.iterdir():
+            if not patient_dir.is_dir() or not patient_dir.name.startswith("sub_"):
                 continue
 
-            # Extract patient ID for filtering
-            split_parts: List[str] = filename.split("_")
-            if len(split_parts) <= 1:
-                continue
-
-            patient_id: str = split_parts[1]
+            # Extract patient ID
+            patient_id: str = patient_dir.name.replace("sub_", "")
             if patient_id not in self.patients_included:
                 continue
 
-            m: Optional[re.Match[str]] = SESSION_RE.match(filename)
-            if not m:
-                print(f"Warning: Unexpected filename: {filename}")
-                continue
+            # Walk through ses_Y directories
+            for session_dir in patient_dir.iterdir():
+                if not session_dir.is_dir() or not session_dir.name.startswith("ses_"):
+                    continue
 
-            patient: str = m.group("patient")
-            session: str = m.group("session")
-            scan_type: str = m.group("scan_type")
+                session_id: str = session_dir.name.replace("ses_", "")
 
-            # Exclude files with scan_type "scan"
-            if scan_type == "scan":
-                continue
+                # Collect all .npy files in this session
+                for npy_file in session_dir.glob("*.npy"):
+                    filename: str = npy_file.name
 
-            full: str = os.path.join(self.data_dir, filename)
-            self.patients_sessions.setdefault(patient, {}).setdefault(
-                session, []
-            ).append(full)
+                    # Parse modality name
+                    m: Optional[re.Match[str]] = MODALITY_RE.match(filename)
+                    if not m:
+                        print(f"Warning: Unexpected filename: {filename}")
+                        continue
+
+                    scan_type: str = m.group("scan_type")
+
+                    # Exclude scan files (scan, scan_pet, scan_ct, etc.)
+                    if scan_type.startswith("scan"):
+                        continue
+
+                    full_path: str = str(npy_file)
+                    self.patients_sessions.setdefault(patient_id, {}).setdefault(
+                        session_id, []
+                    ).append(full_path)
 
         self.pairs = []
         for patient, sessions in self.patients_sessions.items():
@@ -170,7 +195,7 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
 
         return v1c, v2c
 
-    def __getitem__(self, idx: int) -> Dict[str, NDArray[np.float32]]:
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
         pair_info: Dict[str, str] = self.pairs[idx]
         vol1: NDArray[np.float32]
         header1: Any
@@ -180,9 +205,17 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
         vol2, header2 = self._load_volume_and_header(pair_info["path2"])
         vol1, vol2 = self._shared_random_crop(vol1, vol2)
 
-        data_dict: Dict[str, NDArray[np.float32]] = {"vol1": vol1, "vol2": vol2}
+        data_dict: Dict[str, Any] = {
+            "vol1": vol1,
+            "vol2": vol2,
+            "patient": pair_info["patient"],
+            "session": pair_info["session"],
+        }
 
         if self.transforms:
-            data_dict = self.transforms(data_dict)
+            # Transforms only apply to volumes, not metadata
+            transformed = self.transforms({"vol1": vol1, "vol2": vol2})
+            data_dict["vol1"] = transformed["vol1"]
+            data_dict["vol2"] = transformed["vol2"]
 
         return data_dict
