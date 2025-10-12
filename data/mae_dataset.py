@@ -21,7 +21,7 @@ except ImportError:
 MODALITY_RE: re.Pattern[str] = re.compile(r"(?P<scan_type>.+?)(?:_\d+)?\.npy")
 
 
-class MAEDataset(Dataset[Dict[str, NDArray[np.float32]]]):
+class MAEDataset(Dataset[Dict[str, Any]]):
     """Dataset for Masked Autoencoder (MAE) training.
 
     Returns individual volumes (no pairing) and includes ALL scan types,
@@ -178,15 +178,65 @@ class MAEDataset(Dataset[Dict[str, NDArray[np.float32]]]):
     def __len__(self) -> int:
         return len(self.volume_paths)
 
-    def __getitem__(self, idx: int) -> Dict[str, NDArray[np.float32]]:
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        import torch
+        import random
+
         vol_path: str = self.volume_paths[idx]
         vol: NDArray[np.float32]
         header: Any
         vol, header = self._load_volume_and_header(vol_path)
 
-        data_dict: Dict[str, NDArray[np.float32]] = {"volume": vol}
+        # Apply random crop to ensure uniform size (96, 96, 96)
+        vol = self._random_crop(vol, patch_size=(96, 96, 96))
+
+        data_dict: Dict[str, Any] = {"volume": vol}
 
         if self.transforms:
             data_dict = self.transforms(data_dict)
 
+        # Convert to regular PyTorch tensor if not already
+        # This handles both numpy arrays and MONAI MetaTensors
+        if not isinstance(data_dict["volume"], torch.Tensor):
+            # Make a copy to ensure the array is writable
+            data_dict["volume"] = torch.from_numpy(data_dict["volume"].copy()).float()
+        elif hasattr(data_dict["volume"], "as_tensor"):
+            # Convert MetaTensor to regular tensor
+            data_dict["volume"] = data_dict["volume"].as_tensor()
+
         return data_dict
+
+    def _random_crop(
+        self,
+        volume: NDArray[np.float32],
+        patch_size: Tuple[int, int, int] = (96, 96, 96),
+    ) -> NDArray[np.float32]:
+        """Apply random crop to ensure uniform size."""
+        import random
+
+        pd, ph, pw = patch_size
+        D, H, W = volume.shape[-3:]
+
+        # Random crop coordinates
+        sd = 0 if D <= pd else random.randint(0, D - pd)
+        sh = 0 if H <= ph else random.randint(0, H - ph)
+        sw = 0 if W <= pw else random.randint(0, W - pw)
+
+        # Apply crop
+        cropped = volume[..., sd : sd + pd, sh : sh + ph, sw : sw + pw]
+
+        # If any dim is smaller than patch, pad
+        if cropped.shape[-3] < pd or cropped.shape[-2] < ph or cropped.shape[-1] < pw:
+            Cd, Ch, Cw = cropped.shape[-3:]
+            pad_d = max(0, pd - Cd)
+            pad_h = max(0, ph - Ch)
+            pad_w = max(0, pw - Cw)
+
+            cropped = np.pad(
+                cropped,
+                ((0, 0), (0, pad_d), (0, pad_h), (0, pad_w)),
+                mode="constant",
+                constant_values=0,
+            )
+
+        return cropped

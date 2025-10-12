@@ -11,25 +11,13 @@ Architecture:
 - SegmentationFineTuner: Parameter-efficient fine-tuning with LoRA
 """
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Optional, Sequence, Tuple
 
-try:
-    import pytorch_lightning as pl
-    from pytorch_lightning.trainer.trainer import Trainer
-except ImportError:
-    pl = None  # type: ignore
-    Trainer = None  # type: ignore
-
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-
-try:
-    from monai.networks.nets.swin_unetr import SwinUNETR
-except ImportError:
-    SwinUNETR = None  # type: ignore
-
+from monai.networks.nets.swin_unetr import SwinUNETR
 from augmentations.mask import random_mask
 
 
@@ -103,7 +91,9 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
         features: torch.Tensor = self.encoder.swinViT(x)[-1]
         return features
 
-    def forward_mae(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward_mae(
+        self, x: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Masked autoencoding forward pass.
 
@@ -111,16 +101,17 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
             x: Input tensor
 
         Returns:
-            Tuple of (reconstruction, mask)
+            Tuple of (reconstruction, mask, original)
         """
+        original: torch.Tensor = x.clone()
         masked_x: torch.Tensor
         mask: torch.Tensor
         masked_x, mask = random_mask(x, self.mask_ratio, 4)
         reconstruction: torch.Tensor = self.encoder(masked_x)
-        return reconstruction, mask
+        return reconstruction, mask, original
 
     def training_step(
-        self, batch: Dict[str, torch.Tensor], batch_idx: int, dataloader_idx: int = 0
+        self, batch: Dict[str, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         """
         Training step for MAE.
@@ -128,26 +119,18 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
         Args:
             batch: Dictionary containing 'volume' key
             batch_idx: Batch index
-            dataloader_idx: Index of the dataloader
 
         Returns:
             MAE loss
         """
-        # Handle multiple dataloaders (combined mode)
-        if isinstance(batch, list):
-            actual_batch = (
-                batch[dataloader_idx] if dataloader_idx < len(batch) else batch[0]
-            )
-        else:
-            actual_batch = batch
-
-        volume: torch.Tensor = actual_batch["volume"]
+        volume: torch.Tensor = batch["volume"]
 
         # MAE loss
         recon: torch.Tensor
         mask: torch.Tensor
-        recon, mask = self.forward_mae(volume)
-        mae_loss: torch.Tensor = F.mse_loss(recon[mask], volume[mask])
+        original: torch.Tensor
+        recon, mask, original = self.forward_mae(volume)
+        mae_loss: torch.Tensor = F.mse_loss(recon[mask], original[mask])
 
         # Logging
         self.log_dict(
@@ -164,30 +147,26 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
         return mae_loss
 
     def validation_step(
-        self, batch: Dict[str, torch.Tensor], batch_idx: int, dataloader_idx: int = 0
+        self, batch: Dict[str, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         """
         Validation step for MAE.
 
-        Note: In validation, PyTorch Lightning calls this separately for each dataloader
-        with proper dataloader_idx, so batch is always a single dict (not a list).
-
         Args:
             batch: Dictionary containing 'volume' key
             batch_idx: Batch index
-            dataloader_idx: Index of the dataloader
 
         Returns:
             MAE loss
         """
-        # In validation, batch is always a dict (not a list)
         volume: torch.Tensor = batch["volume"]
 
         # MAE loss
         recon: torch.Tensor
         mask: torch.Tensor
-        recon, mask = self.forward_mae(volume)
-        mae_loss: torch.Tensor = F.mse_loss(recon[mask], volume[mask])
+        original: torch.Tensor
+        recon, mask, original = self.forward_mae(volume)
+        mae_loss: torch.Tensor = F.mse_loss(recon[mask], original[mask])
 
         # Logging
         self.log_dict(
@@ -315,9 +294,6 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         self.temperature: float = temperature
         self.momentum: float = momentum
         self.queue_size: int = queue_size
-
-        if SwinUNETR is None:
-            raise ImportError("monai package is required for SwinUNETR")
 
         # Key encoder (momentum-updated)
         self.encoder_m: Any = SwinUNETR(
@@ -473,7 +449,9 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         features: torch.Tensor = self.encoder.swinViT(x)[-1]
         return features
 
-    def forward_mae(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward_mae(
+        self, x: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Masked autoencoding forward pass.
 
@@ -481,13 +459,14 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
             x: Input tensor
 
         Returns:
-            Tuple of (reconstruction, mask)
+            Tuple of (reconstruction, mask, original)
         """
+        original: torch.Tensor = x.clone()
         masked_x: torch.Tensor
         mask: torch.Tensor
         masked_x, mask = random_mask(x, self.mask_ratio, 4)
         reconstruction: torch.Tensor = self.encoder(masked_x)
-        return reconstruction, mask
+        return reconstruction, mask, original
 
     def forward_contrastive(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -591,10 +570,10 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
 
         # MAE loss on both views (only in combined mode)
         if self.pretraining_mode == "combined":
-            recon1, mask1 = self.forward_mae(view1)
-            recon2, mask2 = self.forward_mae(view2)
-            loss_view1 = F.mse_loss(recon1[mask1], view1[mask1])
-            loss_view2 = F.mse_loss(recon2[mask2], view2[mask2])
+            recon1, mask1, original1 = self.forward_mae(view1)
+            recon2, mask2, original2 = self.forward_mae(view2)
+            loss_view1 = F.mse_loss(recon1[mask1], original1[mask1])
+            loss_view2 = F.mse_loss(recon2[mask2], original2[mask2])
             mae_loss = 0.5 * (loss_view1 + loss_view2)
         else:
             mae_loss = torch.tensor(0.0, device=view1.device)
@@ -658,8 +637,8 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         volume: torch.Tensor = batch["volume"]
 
         # MAE loss only
-        recon, mask = self.forward_mae(volume)
-        mae_loss = F.mse_loss(recon[mask], volume[mask])
+        recon, mask, original = self.forward_mae(volume)
+        mae_loss = F.mse_loss(recon[mask], original[mask])
 
         # Logging
         prefix = "train" if is_training else "val"
@@ -843,7 +822,3 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
                 "interval": "step",
             },
         }
-
-
-# Backward compatibility alias
-ContrastiveTransformer = ContrastiveMAEPretrainer

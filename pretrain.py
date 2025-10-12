@@ -5,6 +5,7 @@ import pytorch_lightning as pl
 from fire import Fire
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.strategies import DDPStrategy
 
 from data.combined_datamodule import CombinedDataModule
 from data.contrastive_datamodule import ContrastiveDataModule
@@ -156,9 +157,8 @@ def train(
                 mode="trilinear",
                 align_corners=True,
             ),
-            T.ToTensord(  # pyright: ignore[reportPrivateImportUsage]
-                keys="volume"
-            ),
+            # Removed ToTensord to avoid MetaTensor collate issues
+            # The dataset returns numpy arrays which PyTorch can handle directly
         ]
     )
 
@@ -248,13 +248,13 @@ def train(
         accelerator="gpu",
         logger=wandb_logger,
         callbacks=[checkpoint_callback],
-        strategy="ddp",
         precision="bf16-mixed",
         accumulate_grad_batches=accumulate_grad_batches,
         max_epochs=epochs,
         log_every_n_steps=10,
         gradient_clip_val=1,
         gradient_clip_algorithm="norm",
+        strategy=DDPStrategy(find_unused_parameters=True),
     )
 
     if resume_from_checkpoint:
