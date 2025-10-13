@@ -46,7 +46,7 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
         )
         self.setup(None)
 
-    def setup(self, stage):
+    def setup(self, stage: Optional[str]):
         # Extract patient IDs from hierarchical directory structure
         data_path = Path(self.data_dir)
         patient_ids = []

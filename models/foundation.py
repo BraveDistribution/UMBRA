@@ -11,7 +11,7 @@ Architecture:
 - SegmentationFineTuner: Parameter-efficient fine-tuning with LoRA
 """
 
-from typing import Any, Dict, Optional, Sequence, Tuple
+from typing import Any, Dict, Optional, Sequence, Tuple, Union, List
 
 import pytorch_lightning as pl
 import torch
@@ -656,7 +656,7 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         return mae_loss
 
     def training_step(
-        self, batch: Dict[str, torch.Tensor], batch_idx: int, dataloader_idx: int = 0
+        self, batch: Union[Dict[str, torch.Tensor], List[Dict[str, torch.Tensor]]], batch_idx: int, dataloader_idx: int = 0
     ) -> torch.Tensor:
         """
         Training step combining MAE and contrastive learning.

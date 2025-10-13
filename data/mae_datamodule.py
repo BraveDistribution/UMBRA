@@ -2,8 +2,9 @@ from typing import Callable, Optional, Union
 
 from pathlib import Path
 
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 from sklearn.model_selection import train_test_split
+
 from data.mae_dataset import MAEDataset
 from torch.utils.data import DataLoader
 
