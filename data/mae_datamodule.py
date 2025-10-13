@@ -27,7 +27,7 @@ class MAEDataModule(pl.LightningDataModule):  # type: ignore
         self.batch_size = batch_size
         self.setup(None)
 
-    def setup(self, stage):
+    def setup(self, stage: Optional[str]):
         # Extract patient IDs from hierarchical directory structure
         data_path = Path(self.data_dir)
         patient_ids = []
