@@ -3,7 +3,7 @@ import random
 import re
 from itertools import combinations
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, Sequence
 
 import numpy as np
 from numpy.typing import NDArray
@@ -21,6 +21,8 @@ except ImportError:
             return pickle.load(f)
 
 
+from utils.misc import ensure_tuple_dim
+
 # Pattern for hierarchical directory structure: sub_X/ses_Y/modality.npy
 MODALITY_RE: re.Pattern[str] = re.compile(r"(?P<scan_type>.+?)(?:_\d+)?\.npy")
 
@@ -33,11 +35,20 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
         transforms: Optional[
             Callable[[Dict[str, NDArray[np.float32]]], Dict[str, NDArray[np.float32]]]
         ] = None,
+        patch_size: Union[int, Sequence[int]] = 96,
     ) -> None:
+        """
+        Args:
+            data_dir: Path to the data directory
+            patients_included: Set of patient IDs to include
+            transforms: Transforms to apply to the data
+            patch_size: Patch size to use for random crop
+        """
         self.data_dir: Union[str, Path] = data_dir
         self.transforms: Optional[
             Callable[[Dict[str, NDArray[np.float32]]], Dict[str, NDArray[np.float32]]]
         ] = transforms
+        self.patch_size = ensure_tuple_dim(patch_size, 3)
         self.patients_included: Set[str] = patients_included
         self.patients_sessions: Dict[str, Dict[str, List[str]]] = {}
         self.pairs: List[Dict[str, str]] = []
@@ -147,7 +158,7 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
         self,
         v1: NDArray[np.float32],
         v2: NDArray[np.float32],
-        patch_size: Tuple[int, int, int] = (96, 96, 96),
+        patch_size: Tuple[int, int, int],
     ) -> Tuple[NDArray[np.float32], NDArray[np.float32]]:
         """
         Apply the same random crop to both volumes so aligned.
@@ -203,7 +214,7 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
         vol2: NDArray[np.float32]
         header2: Any
         vol2, header2 = self._load_volume_and_header(pair_info["path2"])
-        vol1, vol2 = self._shared_random_crop(vol1, vol2)
+        vol1, vol2 = self._shared_random_crop(vol1, vol2, patch_size=self.patch_size)
 
         data_dict: Dict[str, Any] = {
             "vol1": vol1,

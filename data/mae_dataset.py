@@ -1,10 +1,13 @@
-from typing import Any, Callable, Dict, List, Optional, Set, Union, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Union, Tuple, Sequence
 import os
+from pathlib import Path
+import re
+
 import numpy as np
 from numpy.typing import NDArray
 from torch.utils.data import Dataset
-from pathlib import Path
-import re
+
+from utils.misc import ensure_tuple_dim
 
 try:
     from batchgenerators.utilities.file_and_folder_operations import (  # type: ignore
@@ -35,12 +38,22 @@ class MAEDataset(Dataset[Dict[str, Any]]):
         transforms: Optional[
             Callable[[Dict[str, NDArray[np.float32]]], Dict[str, NDArray[np.float32]]]
         ] = None,
+        patch_size: Union[int, Sequence[int]] = 96,
         exclude_contrastive_pairs: bool = False,
     ) -> None:
+        """
+        Args:
+            data_dir: Path to the data directory
+            patients_included: Set of patient IDs to include
+            transforms: Transforms to apply to the data
+            patch_size: Patch size to use for random crop
+            exclude_contrastive_pairs: Whether to exclude contrastive pairs
+        """
         self.data_dir: Union[str, Path] = data_dir
         self.transforms: Optional[
             Callable[[Dict[str, NDArray[np.float32]]], Dict[str, NDArray[np.float32]]]
         ] = transforms
+        self.patch_size = ensure_tuple_dim(patch_size, 3)
         self.patients_included: Set[str] = patients_included
         self.exclude_contrastive_pairs: bool = exclude_contrastive_pairs
         self.volume_paths: List[str] = []
@@ -188,7 +201,7 @@ class MAEDataset(Dataset[Dict[str, Any]]):
         vol, header = self._load_volume_and_header(vol_path)
 
         # Apply random crop to ensure uniform size (96, 96, 96)
-        vol = self._random_crop(vol, patch_size=(96, 96, 96))
+        vol = self._random_crop(vol, patch_size=self.patch_size)
 
         data_dict: Dict[str, Any] = {"volume": vol}
 
@@ -202,14 +215,14 @@ class MAEDataset(Dataset[Dict[str, Any]]):
             data_dict["volume"] = torch.from_numpy(data_dict["volume"].copy()).float()
         elif hasattr(data_dict["volume"], "as_tensor"):
             # Convert MetaTensor to regular tensor
-            data_dict["volume"] = data_dict["volume"].as_tensor()
+            data_dict["volume"] = data_dict["volume"].as_tensor() # type: ignore[hasAttribute]
 
         return data_dict
 
     def _random_crop(
         self,
         volume: NDArray[np.float32],
-        patch_size: Tuple[int, int, int] = (96, 96, 96),
+        patch_size: Tuple[int, int, int],
     ) -> NDArray[np.float32]:
         """Apply random crop to ensure uniform size."""
         import random
