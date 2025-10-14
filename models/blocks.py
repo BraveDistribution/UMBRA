@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from monai.networks.blocks.patchembedding import PatchEmbed
 
 from utils.misc import ensure_tuple_dim
-from utils.spatial import upsample_to, voxel_shuffle_3d
+from utils.spatial import upsample_to_3d, voxel_shuffle_3d
 
 
 class ConvNormAct3d(nn.Module):
@@ -128,16 +128,16 @@ class FPNDecoderFeaturesOnly(nn.Module):
         f1, f2, f3, f4, f5 = feats
 
         p5 = self.lat5(f5)
-        p4 = self.lat4(f4) + upsample_to(p5, f4)
+        p4 = self.lat4(f4) + upsample_to_3d(p5, f4)
         p4 = self.smooth4(p4)
 
-        p3 = self.lat3(f3) + upsample_to(p4, f3)
+        p3 = self.lat3(f3) + upsample_to_3d(p4, f3)
         p3 = self.smooth3(p3)
 
-        p2 = self.lat2(f2) + upsample_to(p3, f2)
+        p2 = self.lat2(f2) + upsample_to_3d(p3, f2)
         p2 = self.smooth2(p2)
 
-        p1 = self.lat1(f1) + upsample_to(p2, f1)
+        p1 = self.lat1(f1) + upsample_to_3d(p2, f1)
         p1 = self.smooth1(p1)
 
         return p1

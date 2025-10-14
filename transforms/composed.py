@@ -120,11 +120,6 @@ def get_mae_transforms(
             CenterSpatialCropd(keys=keys, roi_size=patch_size),
         ])
 
-    # Get mask
-    transforms.extend([
-        CreateRandomMaskd(keys=keys, mask_ratio=mask_ratio, mask_patch_size=mask_patch_size),
-    ])
-
     return cast(Callable[[Dict[str, NDArray]], Dict[str, torch.Tensor]], Compose(transforms))
 
 def get_contrastive_transforms(

@@ -101,7 +101,7 @@ def shared_random_crop(
 
         return v1c, v2c
 
-def upsample_to(
+def upsample_to_3d(
     x: torch.Tensor, 
     ref: torch.Tensor, 
     mode: str = "trilinear"
