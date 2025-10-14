@@ -3,18 +3,18 @@ Pytorch blocks of layers to be used in the construction of networks.
 """
 from __future__ import annotations
 
-from typing import Any, Sequence, Optional, Dict, Literal
+from typing import Any, Sequence, Optional, Dict, Literal, Optional
 from typing import TYPE_CHECKING
+from contextlib import contextmanager
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from monai.networks.nets.swin_unetr import SwinTransformer
+from monai.networks.blocks.patchembedding import PatchEmbed
 
 from utils.misc import ensure_tuple_dim
 from utils.spatial import upsample_to, voxel_shuffle_3d
 
-if TYPE_CHECKING:
-    from torch import Tensor
 
 class ConvNormAct3d(nn.Module):
     """
@@ -72,39 +72,11 @@ class ConvNormAct3d(nn.Module):
         else:
             raise ValueError(f"Invalid activation function: {act}")
         
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv(x)
         x = self.norm(x)
         x = self.act(x)
         return x
-
-
-class SwinEncoder(SwinTransformer):
-    """
-    Wrapper for MONAI's `SwinTransformer`.
-    """
-    def __init__(
-        self, 
-        in_channels: int = 1,
-        patch_size: int | Sequence[int] = 2,
-        depths: Sequence[int] = (2, 2, 6, 2),
-        num_heads: Sequence[int] = (3, 6, 12, 24),
-        window_size: Sequence[int] | int = 7,
-        feature_size: int = 48,
-        use_v2: bool = True,
-        spatial_dims: int = 3,
-        **kwargs,
-    ):
-        super().__init__(
-            in_chans=in_channels,
-            embed_dim=feature_size,
-            depths=depths,
-            num_heads=num_heads,
-            window_size=ensure_tuple_dim(window_size, spatial_dims),
-            patch_size=ensure_tuple_dim(patch_size, spatial_dims),
-            use_v2=use_v2,
-            **kwargs,
-        )
 
 
 class FPNDecoderFeaturesOnly(nn.Module):
@@ -142,7 +114,7 @@ class FPNDecoderFeaturesOnly(nn.Module):
         else:
             self.smooth4 = self.smooth3 = self.smooth2 = self.smooth1 = nn.Identity()
 
-    def forward(self, feats: list[Tensor]) -> Tensor:
+    def forward(self, feats: list[torch.Tensor]) -> torch.Tensor:
         """
         Args:
             feats: list of 5 tensors [f1,f2,f3,f4,f5] with shapes
@@ -190,5 +162,110 @@ class VoxelShuffleHead3D(nn.Module):
         target_dims = out_ch * self.up[0] * self.up[1] * self.up[2]
         self.proj = nn.Conv3d(in_ch, target_dims, kernel_size=1, bias=True)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return voxel_shuffle_3d(self.proj(x), self.up)
+
+
+class MaskTokenInjector(nn.Module):
+    """
+    Mask patches and replace with a learnable mask token.
+    """
+    def __init__(self, embed_dim: int):
+        """
+        Args:
+            embed_dim: Mask token dimension; should match ViT embedding dimension.
+        """
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, self.embed_dim))
+        nn.init.trunc_normal_(self.mask_token, std=0.02)
+    
+    def forward(self, tokens: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            tokens: (B, N, C) from patch embed
+            mask: (B, N) boolean; True => masked patch
+        """
+        B, N, C = tokens.shape
+        assert mask.shape == (B, N), f"Expected mask shape {B}x{N}, got {mask.shape}"
+        assert C == self.embed_dim, f"Expected {self.embed_dim} channels, got {C}"
+
+        mask_tokens = self.mask_token.expand(B, N, C)
+        return torch.where(mask.unsqueeze(-1), mask_tokens, tokens)
+
+
+class PatchEmbedWithMask(nn.Module):
+    """
+    Wrapper for MONAI's `PatchEmbed` that injects mask tokens.
+    """
+    def __init__(self, patch_embed: PatchEmbed, embed_dim: int):
+        super().__init__()
+        self.patch_embed = patch_embed
+        self.mask_token_injector = MaskTokenInjector(embed_dim)
+        self._mask: Optional[torch.Tensor] = None  # (B, N) bool, will get populated in each call
+
+    def set_mask(self, mask_or_none):
+        self._mask = mask_or_none
+
+    @contextmanager
+    def use_mask(self, mask_or_none):
+        """
+        Context manager to set the mask for the duration of the MAE forward
+        pass and restore it in case of exception.
+
+        Same encoder API when in contrastive mode or inference by setting/leaving
+        it to None. Leaves encoder's `forward()` unchanged.
+
+        Example:
+        ```python
+        >>> with model.patch_embed.use_mask(mask):
+        ...    feats = model(x)
+        ```
+        
+        """
+        old = self._mask
+        self._mask = mask_or_none
+        try:
+            yield
+        finally:
+            self._mask = old
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: Input tensor of shape (B, C, *spatial_dims)
+            mask: Boolean tensor of shape (B, N)
+        """
+        # MONAI PatchEmbed -> grid (B, C, Dp, Hp, Wp) or (B, C, Hp, Wp)
+        grid = self.patch_embed(x)
+        if self._mask is None:
+            return grid
+        
+        # flatten grid -> (B, N, C)
+        # 3D case: (B, C, Dp, Hp, Wp)
+        if grid.dim() == 5:
+            B, C, Dp, Hp, Wp = grid.shape
+            tokens = grid.permute(0, 2, 3, 4, 1).contiguous().view(B, Dp*Hp*Wp, C)
+            if self._mask.dim() == 4:  # (B,Dp,Hp,Wp) support
+                mask = self._mask.view(B, Dp*Hp*Wp)
+            else:
+                mask = self._mask
+            tokens = self.mask_token_injector(tokens, mask)
+            # reshape back to grid
+            grid = tokens.view(B, Dp, Hp, Wp, C).permute(0, 4, 1, 2, 3).contiguous()
+        
+        # 2D case: (B, C, Hp, Wp)
+        elif grid.dim() == 4:
+            B, C, Hp, Wp = grid.shape
+            tokens = grid.permute(0, 2, 3, 1).contiguous().view(B, Hp*Wp, C)
+            if self._mask.dim() == 3:
+                mask = self._mask.view(B, Hp*Wp)
+            else:
+                mask = self._mask
+            tokens = self.mask_token_injector(tokens, mask)
+            grid = tokens.view(B, Hp, Wp, C).permute(0, 3, 1, 2).contiguous()
+        else:
+            raise RuntimeError("Unexpected PatchEmbed output rank.")
+        return grid
+
+        

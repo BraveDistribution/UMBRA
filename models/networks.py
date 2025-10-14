@@ -4,14 +4,85 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from monai.networks.nets.swin_unetr import SwinTransformer as SwinViT
+from monai.networks.nets.swin_unetr import SwinTransformer
 
 from .blocks import (
-    SwinEncoder, 
     FPNDecoderFeaturesOnly, 
     VoxelShuffleHead3D,
+    PatchEmbedWithMask,
 )
 from utils.misc import ensure_tuple_dim
+from utils.nets import swap_in_to_gn
+
+
+class SwinEncoder(SwinTransformer):
+    """
+    Wrapper for MONAI's `SwinTransformer`.
+    """
+    def __init__(
+        self, 
+        in_channels: int = 1,
+        patch_size: int | Sequence[int] = 2,
+        depths: Sequence[int] = (2, 2, 6, 2),
+        num_heads: Sequence[int] = (3, 6, 12, 24),
+        window_size: Sequence[int] | int = 7,
+        feature_size: int = 48,
+        use_v2: bool = True,
+        spatial_dims: int = 3,
+        **kwargs,
+    ):
+        super().__init__(
+            in_chans=in_channels,
+            embed_dim=feature_size,
+            depths=depths,
+            num_heads=num_heads,
+            window_size=ensure_tuple_dim(window_size, spatial_dims),
+            patch_size=ensure_tuple_dim(patch_size, spatial_dims),
+            use_v2=use_v2,
+            **kwargs,
+        )
+
+
+class SwinEncoderMAE(nn.Module):
+    """
+    Swin ViT encoder with mask token injection support for MAE.
+
+    Same args as `SwinEncoder`.
+    """
+    def __init__(
+        self,
+        *,
+        in_channels: int = 1,
+        patch_size: int | Sequence[int] = 2,
+        depths: Sequence[int] = (2, 2, 6, 2),
+        num_heads: Sequence[int] = (3, 6, 12, 24),
+        window_size: Sequence[int] | int = 7,
+        feature_size: int = 48,
+        use_v2: bool = True,
+        spatial_dims: int = 3,
+        **extra_swin_kwargs,
+    ):
+        super().__init__()
+        self.encoder = SwinEncoder(
+            in_channels=in_channels,
+            patch_size=patch_size,
+            depths=depths,
+            num_heads=num_heads,
+            window_size=window_size,
+            feature_size=feature_size,
+            use_v2=use_v2,
+            spatial_dims=spatial_dims,
+            **extra_swin_kwargs,
+        )
+        # Replace patch embed with patch embed + mask injector ->
+        # -> allows masking on the token space
+        patch_embed_wrapper = PatchEmbedWithMask(
+            patch_embed=self.encoder.patch_embed, embed_dim=feature_size
+        )
+        self.encoder.patch_embed = patch_embed_wrapper # type: ignore[assignment]
+
+        # Swap InstanceNorm to GroupNorm -> less sensitive to mask ratio
+        swap_in_to_gn(self.encoder)
 
 
 class Swinv2LateFusionFPNDecoder(nn.Module):
