@@ -6,5 +6,6 @@ and other common operations.
 """
 
 from utils.masking import generate_random_mask
+from utils.misc import ensure_tuple_dim
 
-__all__ = ["generate_random_mask"]
+__all__ = ["generate_random_mask", "ensure_tuple_dim"]

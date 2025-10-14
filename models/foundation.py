@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from monai.networks.nets.swin_unetr import SwinUNETR
-from augmentations.mask import random_mask
+from transforms.mask import random_mask
 
 
 class MAEPretrainer(pl.LightningModule):  # type: ignore

@@ -40,7 +40,7 @@ dev-dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["models", "data", "augmentations", "utils", "configs"]
+packages = ["models", "data", "transforms", "utils", "configs"]
 
 [build-system]
 requires = ["hatchling"]
