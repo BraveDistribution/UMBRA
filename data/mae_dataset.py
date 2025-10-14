@@ -8,7 +8,7 @@ from numpy.typing import NDArray
 import torch
 from torch.utils.data import Dataset
 
-from utils import ensure_tuple_dim, load_volume_and_header
+from utils import ensure_tuple_dim, load_volume
 
 
 MODALITY_RE: re.Pattern[str] = re.compile(r"(?P<scan_type>.+?)(?:_\d+)?\.npy")
@@ -160,8 +160,8 @@ class MAEDataset(Dataset[Dict[str, Any]]):
             if not vol_path.startswith(str(self.data_dir))
             else vol_path
         )
-        vol, header = load_volume_and_header(path)
-        data_dict: Dict[str, Any] = {"volume": vol, "header": header}
+        vol = load_volume(path)
+        data_dict: Dict[str, Any] = {"volume": vol}
         
         if self.transforms:
             data_dict = self.transforms(data_dict)

@@ -32,4 +32,4 @@ I recommend modifying only the transforms for this project. But in the future th
 
 ## Changes
 1. Moved cropping to transforms as well, since it is good if it happens after rotation augmentations to minimize artifacts.
-2. Should I move loading as well?
+2. Changed `load_volume_and_header` to `load_volume` to reduce IO time since we are not using the header.
