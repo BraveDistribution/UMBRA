@@ -29,3 +29,7 @@ I recommend modifying only the transforms for this project. But in the future th
 
 4. Testing:
    - Ideally mock patient directory structure, since I don't (and hence future users) have access to the test dir. 
+
+## Changes
+1. Moved cropping to transforms as well, since it is good if it happens after rotation augmentations to minimize artifacts.
+2. Should I move loading as well?

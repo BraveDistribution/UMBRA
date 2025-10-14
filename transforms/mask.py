@@ -9,7 +9,6 @@ import torch
 
 from utils.masking import generate_random_mask
 
-
 def random_mask(
     x: torch.Tensor,
     mask_ratio: float,

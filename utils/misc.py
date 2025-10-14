@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "ensure_tuple_dim",
+]
+
 from typing import Any, Sequence
 
 def ensure_tuple_dim(

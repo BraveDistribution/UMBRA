@@ -5,8 +5,13 @@ This module provides core masking functionality for generating random masks
 on 2D and 3D tensors, commonly used in masked autoencoding approaches.
 """
 
-import torch
+from __future__ import annotations
 
+__all__ = [
+    "generate_random_mask",
+]
+
+import torch
 
 def generate_random_mask(
     x: torch.Tensor,
