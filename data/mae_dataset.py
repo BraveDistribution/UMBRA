@@ -167,7 +167,7 @@ class MAEDataset(Dataset[Dict[str, Any]]):
             data_dict = self.transforms(data_dict)
         else:
             # Default transforms
-            from utils.croppad import random_crop
+            from utils.spatial import random_crop
             data_dict["volume"] = random_crop(vol, self.patch_size)
 
         # Convert to regular PyTorch tensor if not already

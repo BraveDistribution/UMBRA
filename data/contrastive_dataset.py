@@ -135,7 +135,7 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
             data_dict["vol2"] = transformed["vol2"]
         else:
             # Default transforms
-            from utils.croppad import shared_random_crop
+            from utils.spatial import shared_random_crop
             data_dict["vol1"], data_dict["vol2"] = (
                 shared_random_crop(vol1, vol2, self.patch_size)
             )
