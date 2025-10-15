@@ -1,4 +1,15 @@
-from typing import Any, Sequence, Literal
+"""PyTorch-based networks."""
+
+from __future__ import annotations
+
+__all__ = [
+    "SwinEncoder",
+    "SwinMAE",
+    "Swinv2LateFusionFPNDecoder",
+]
+
+from typing import Any, Sequence, Literal, Union, Dict, Optional
+from typing import cast, TYPE_CHECKING
 
 import torch
 import torch.nn as nn
@@ -14,6 +25,9 @@ from .blocks import (
 from utils.misc import ensure_tuple_dim
 from utils.nets import swap_in_to_gn
 
+if TYPE_CHECKING:
+    from monai.networks.blocks.patchembedding import PatchEmbed
+
 
 class SwinEncoder(SwinTransformer):
     """
@@ -22,12 +36,13 @@ class SwinEncoder(SwinTransformer):
     def __init__(
         self, 
         in_channels: int = 1,
-        patch_size: int | Sequence[int] = 2,
+        patch_size: Union[int, Sequence[int]] = 2,
         depths: Sequence[int] = (2, 2, 6, 2),
         num_heads: Sequence[int] = (3, 6, 12, 24),
-        window_size: Sequence[int] | int = 7,
+        window_size: Union[Sequence[int], int] = 7,
         feature_size: int = 48,
         use_v2: bool = True,
+        use_checkpoint: bool = True,
         spatial_dims: int = 3,
         **kwargs,
     ):
@@ -39,11 +54,12 @@ class SwinEncoder(SwinTransformer):
             window_size=ensure_tuple_dim(window_size, spatial_dims),
             patch_size=ensure_tuple_dim(patch_size, spatial_dims),
             use_v2=use_v2,
+            use_checkpoint=use_checkpoint,
             **kwargs,
         )
 
 
-class SwinEncoderMAE(nn.Module):
+class SwinEncoderMAE(SwinEncoder):
     """
     Swin ViT encoder with mask token injection support for MAE.
 
@@ -53,17 +69,18 @@ class SwinEncoderMAE(nn.Module):
         self,
         *,
         in_channels: int = 1,
-        patch_size: int | Sequence[int] = 2,
+        patch_size: Union[int, Sequence[int]] = 2,
         depths: Sequence[int] = (2, 2, 6, 2),
         num_heads: Sequence[int] = (3, 6, 12, 24),
-        window_size: Sequence[int] | int = 7,
+        window_size: Union[Sequence[int], int] = 7,
         feature_size: int = 48,
         use_v2: bool = True,
+        use_checkpoint: bool = True,
         spatial_dims: int = 3,
-        **extra_swin_kwargs,
+        gn_groups: int = 8,
+        **kwargs,
     ):
-        super().__init__()
-        self.encoder = SwinEncoder(
+        super().__init__(
             in_channels=in_channels,
             patch_size=patch_size,
             depths=depths,
@@ -71,19 +88,100 @@ class SwinEncoderMAE(nn.Module):
             window_size=window_size,
             feature_size=feature_size,
             use_v2=use_v2,
+            use_checkpoint=use_checkpoint,
             spatial_dims=spatial_dims,
-            **extra_swin_kwargs,
+            **kwargs,
         )
         # Replace patch embed with patch embed + mask injector ->
         # -> allows masking on the token space
         patch_embed_wrapper = PatchEmbedWithMask(
-            patch_embed=self.encoder.patch_embed, embed_dim=feature_size
+            patch_embed=cast(PatchEmbed, self.patch_embed), embed_dim=feature_size
         )
-        self.encoder.patch_embed = patch_embed_wrapper # type: ignore[assignment]
+        self.patch_embed = patch_embed_wrapper
 
         # Swap InstanceNorm to GroupNorm -> less sensitive to mask ratio
-        swap_in_to_gn(self.encoder)
+        swap_in_to_gn(self, groups=gn_groups)
 
+
+class SwinMAE(nn.Module):
+    """
+    Swin ViT encoder with mask token injection support for MAE and
+    a lightweight FPN decoder.
+    """
+    def __init__(
+        self,
+        *,
+        # Swin encoder args
+        in_channels: int = 1,
+        patch_size: Union[int, Sequence[int]] = 2,
+        depths: Sequence[int] = (2, 2, 6, 2),
+        num_heads: Sequence[int] = (3, 6, 12, 24),
+        window_size: Union[Sequence[int], int] = 7,
+        feature_size: int = 48,
+        use_v2: bool = True,
+        use_checkpoint: bool = True,
+        extra_swin_kwargs: Optional[Dict[str, Any]] = None,
+        spatial_dims: int = 3,
+        gn_groups: int = 8,
+        # FPN decoder args
+        width: int = 32,
+    ):
+        super().__init__()
+
+        # Initialize encoder
+        extra_swin_kwargs = extra_swin_kwargs or {}
+        self.encoder = SwinEncoderMAE(
+            in_channels=in_channels,
+            patch_size=patch_size,
+            depths=depths,
+            num_heads=num_heads,
+            window_size=window_size,
+            feature_size=feature_size,
+            use_v2=use_v2,
+            use_checkpoint=use_checkpoint,
+            gn_groups=gn_groups,
+            **extra_swin_kwargs,
+        )
+
+        # MONAI's `SwinTransformer` returns input after patch_embed and 4-level feature maps
+        in_feats = [feature_size * 2**i for i in range(len(depths) + 1)]
+
+        # Initialize FPN decoder
+        self.feats_decoder = FPNDecoderFeaturesOnly(
+            in_feats=in_feats,
+            in_chans=in_channels,
+            out_channels=in_channels,
+            width=width,
+            norm="group",
+            norm_kwargs={"num_groups": gn_groups},
+        )
+        self.head = VoxelShuffleHead3D(
+            in_ch=width,
+            out_ch=in_channels,
+            up=patch_size,
+        )
+
+    def forward(self, x: torch.Tensor, patch_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Args:
+            x: Input tensor of shape (B, C, *spatial_dims).
+            patch_mask: Optional mask of shape (B, N) or (B, Dp, Hp, Wp) - masked=True.
+
+        Returns:
+            out (torch.Tensor): Raw logits of shape (B, C, *spatial_dims).
+        """
+        if patch_mask is not None:
+            ctx = self.encoder.patch_embed.use_mask(patch_mask)  # context manager
+        else:
+            from contextlib import nullcontext
+            ctx = nullcontext()
+
+        with ctx:
+            feats = self.encoder(x)
+
+        feats = self.feats_decoder(feats)
+        out = self.head(feats)
+        return out
 
 class Swinv2LateFusionFPNDecoder(nn.Module):
     """
@@ -98,13 +196,14 @@ class Swinv2LateFusionFPNDecoder(nn.Module):
         *,
         # SwinViT encoder args
         in_channels: int = 1,
-        patch_size: int | Sequence[int] = 2,
+        patch_size: Union[int, Sequence[int]] = 2,
         depths: Sequence[int] = (2, 2, 6, 2),
         num_heads: Sequence[int] = (3, 6, 12, 24),
-        window_size: Sequence[int] | int = 7,
+        window_size: Union[Sequence[int], int] = 7,
         feature_size: int = 48,
         use_v2: bool = True,
-        extra_swin_kwargs: dict[str, Any] | None = None,
+        use_checkpoint: bool = True,
+        extra_swin_kwargs: Optional[Dict[str, Any]] = None,
         spatial_dims: int = 3,
         # Fusion args
         n_late_fusion: int = 1,
@@ -125,6 +224,7 @@ class Swinv2LateFusionFPNDecoder(nn.Module):
             window_size=window_size,
             patch_size=patch_size,
             use_v2=use_v2,
+            use_checkpoint=use_checkpoint,
             **extra_swin_kwargs,
         )
 
@@ -219,8 +319,8 @@ class Swinv2LateFusionFPNDecoder(nn.Module):
         alpha = torch.softmax(self.fusion_weights, dim=1)
 
         # running fused features per scale; fill lazily at first modality
-        fused_in: torch.Tensor | None = None
-        fused_feats: list[torch.Tensor | None] = [None] * (alpha.shape[0] - 1)
+        fused_in: Optional[torch.Tensor] = None
+        fused_feats: list[Optional[torch.Tensor]] = [None] * (alpha.shape[0] - 1)
 
         # split input into chunks of size B and pass to encoder
         for m in range(n_late_fusion):

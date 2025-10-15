@@ -19,7 +19,6 @@ import torch.nn.functional as F
 from utils.misc import ensure_tuple_dim
 
 # ----------ConvNet-compatible masking-----------#
-
 def _ceil_div(a: int, b: int) -> int:
     return (a + b - 1) // b
 

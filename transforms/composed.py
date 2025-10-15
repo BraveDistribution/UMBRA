@@ -44,20 +44,16 @@ if TYPE_CHECKING:
 def get_mae_transforms(
     keys: Sequence[str] = ("volume",),
     patch_size: Union[int, Sequence[int]] = 96,
-    mask_ratio: Union[float, Sequence[float]] = (0.6, 0.75),
-    mask_patch_size: int = 4,
     val_mode: bool = False,
 ) -> Callable[[Dict[str, NDArray]], Dict[str, torch.Tensor]]:
     """
     Get MAE transforms for training or validation.
 
-    Saves reconstruction target as `recon` key and masked 
+    Saves reconstruction target as `recon` key. 
 
     Args:
         keys: Keys to apply the transforms to.
         patch_size: Target size of returned tensors.
-        mask_ratio: Mask ratio to use for MAE.
-        mask_patch_size: Mask patch size to use for MAE.
         val_mode: Whether to use validation mode.
 
     Returns:

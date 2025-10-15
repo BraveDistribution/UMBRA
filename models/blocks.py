@@ -3,7 +3,7 @@ Pytorch blocks of layers to be used in the construction of networks.
 """
 from __future__ import annotations
 
-from typing import Any, Sequence, Optional, Dict, Literal, Optional
+from typing import Any, Sequence, Optional, Dict, Literal, Optional, Union
 from typing import TYPE_CHECKING
 from contextlib import contextmanager
 
@@ -150,7 +150,7 @@ class VoxelShuffleHead3D(nn.Module):
     Applies a 1x1x1 convolution to the get target number of channels and
     then gets original spatial dimensions back via voxel shuffle.
     """
-    def __init__(self, in_ch: int, out_ch: int, up: Sequence[int] | int):
+    def __init__(self, in_ch: int, out_ch: int, up: Union[Sequence[int], int]):
         """
         Args:
             in_ch: Number of input channels
