@@ -6,6 +6,9 @@
 3. Testing
    - Check InfoNCE
    - Check contrastive only fallback
+   - Test `PatchEmbedWithMask`
+   - Test and viz transforms
+   - Test `SwinMAE` and `SwinEncoderMAE` to check successful integration of `PatchEmbedWithMask` to existing API
 4. Logging
 
 ## Comments
