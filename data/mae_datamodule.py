@@ -19,12 +19,14 @@ class MAEDataModule(pl.LightningDataModule):  # type: ignore
     def __init__(
         self,
         data_dir: Union[str, Path],
-        transforms: Optional[Callable] = None,
+        train_transforms: Optional[Callable] = None,
+        val_transforms: Optional[Callable] = None,
         batch_size: int = 10,
     ):
         super().__init__()
         self.data_dir = data_dir
-        self.transforms = transforms
+        self.train_transforms = train_transforms
+        self.val_transforms = val_transforms
         self.batch_size = batch_size
         self.setup(None)
 
@@ -50,12 +52,12 @@ class MAEDataModule(pl.LightningDataModule):  # type: ignore
         self.train_dataset = MAEDataset(
             data_dir=self.data_dir,
             patients_included=set(train_patients),
-            transforms=self.transforms,
+            transforms=self.train_transforms,
         )
         self.val_dataset = MAEDataset(
             data_dir=self.data_dir,
             patients_included=set(val_patients),
-            transforms=self.transforms,
+            transforms=self.val_transforms,
         )
 
     def train_dataloader(self):

@@ -33,8 +33,12 @@ I recommend modifying only the transforms for this project. But in the future th
 4. Testing:
    - Ideally mock patient directory structure, since I don't (and hence future users) have access to the test dir. 
 
+5. Train script: 
+   - What about 
+
 ## Changes
 1. Moved cropping to transforms as well, since it is good if it happens after rotation augmentations to minimize artifacts.
 2. Changed `load_volume_and_header` to `load_volume` to reduce IO time since we are not using the header.
 3. Replaced masking with Conv-compatible masking to avoid leakage.
 4. Some cleanup in pl_modules and settings.
+5. Added separate train and val transforms

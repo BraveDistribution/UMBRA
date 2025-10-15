@@ -21,7 +21,6 @@ class TestMAEDataModule:
         """Verify MAEDataModule includes ALL .npy files in the dataset."""
         data_module = MAEDataModule(
             data_dir=TEST_DATA_DIR,
-            transforms=None,
             batch_size=2,
         )
 
@@ -43,7 +42,6 @@ class TestMAEDataModule:
         """Verify each sample returns dict with 'volume' key and correct shape."""
         data_module = MAEDataModule(
             data_dir=TEST_DATA_DIR,
-            transforms=None,
             batch_size=2,
         )
 
@@ -67,7 +65,6 @@ class TestContrastiveDataModule:
         """Verify 'scan_*' files are excluded from contrastive dataset."""
         data_module = ContrastiveDataModule(
             data_dir=TEST_DATA_DIR,
-            transforms=None,
             batch_size=2,
         )
 
@@ -87,7 +84,6 @@ class TestContrastiveDataModule:
         """Verify all pairs come from SAME patient AND SAME session."""
         data_module = ContrastiveDataModule(
             data_dir=TEST_DATA_DIR,
-            transforms=None,
             batch_size=2,
         )
 
@@ -119,7 +115,6 @@ class TestContrastiveDataModule:
         """
         data_module = ContrastiveDataModule(
             data_dir=TEST_DATA_DIR,
-            transforms=None,
             batch_size=2,
         )
 
@@ -152,7 +147,6 @@ class TestContrastiveDataModule:
         """Verify each sample has correct keys: vol1, vol2, patient, session."""
         data_module = ContrastiveDataModule(
             data_dir=TEST_DATA_DIR,
-            transforms=None,
             batch_size=2,
         )
 
@@ -176,7 +170,6 @@ class TestCombinedDataModule:
         """CRITICAL: Verify zero images appear in both contrastive AND MAE loaders."""
         data_module = CombinedDataModule(
             data_dir=TEST_DATA_DIR,
-            transforms=None,
             batch_size=2,
             mae_batch_size=2,
         )
@@ -205,7 +198,6 @@ class TestCombinedDataModule:
         """
         data_module = CombinedDataModule(
             data_dir=TEST_DATA_DIR,
-            transforms=None,
             batch_size=2,
             mae_batch_size=2,
         )
@@ -236,7 +228,6 @@ class TestCombinedDataModule:
         """Verify train_dataloader() and val_dataloader() return list of 2 loaders."""
         data_module = CombinedDataModule(
             data_dir=TEST_DATA_DIR,
-            transforms=None,
             batch_size=2,
             mae_batch_size=2,
         )
@@ -254,7 +245,6 @@ class TestCombinedDataModule:
         """Verify separate batch sizes work for contrastive and MAE."""
         data_module = CombinedDataModule(
             data_dir=TEST_DATA_DIR,
-            transforms=None,
             batch_size=4,
             mae_batch_size=8,
         )
@@ -280,19 +270,16 @@ class TestDatasetSizes:
         # Create all three data modules
         mae_only = MAEDataModule(
             data_dir=TEST_DATA_DIR,
-            transforms=None,
             batch_size=2,
         )
 
         contrastive_only = ContrastiveDataModule(
             data_dir=TEST_DATA_DIR,
-            transforms=None,
             batch_size=2,
         )
 
         combined = CombinedDataModule(
             data_dir=TEST_DATA_DIR,
-            transforms=None,
             batch_size=2,
             mae_batch_size=2,
         )
@@ -379,7 +366,6 @@ class TestIntegrationRealData:
         # Create a data module with just sub_10
         data_module = CombinedDataModule(
             data_dir=TEST_DATA_DIR,
-            transforms=None,
             batch_size=2,
             mae_batch_size=2,
         )
@@ -426,13 +412,11 @@ class TestIntegrationRealData:
         """
         mae_module = MAEDataModule(
             data_dir=TEST_DATA_DIR,
-            transforms=None,
             batch_size=2,
         )
 
         contrastive_module = ContrastiveDataModule(
             data_dir=TEST_DATA_DIR,
-            transforms=None,
             batch_size=2,
         )
 

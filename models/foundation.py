@@ -22,7 +22,7 @@ from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Union, List
 from typing import cast
 from copy import deepcopy
 
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
