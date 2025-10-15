@@ -3,10 +3,10 @@ from typing import Callable, Optional, Union
 from pathlib import Path
 
 try:
-    import pytorch_lightning as pl
-    from pytorch_lightning.utilities.types import EVAL_DATALOADERS  # noqa: F401
+    import lightning.pytorch as pl
+    from lightning.pytorch.utilities.types import EVAL_DATALOADERS  # noqa: F401
 except ImportError:
-    # Fallback if pytorch_lightning is not installed
+    # Fallback if lightning.pytorch is not installed
     pl = None  # type: ignore
     EVAL_DATALOADERS = None  # type: ignore
 from sklearn.model_selection import train_test_split
@@ -31,15 +31,19 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
     def __init__(
         self,
         data_dir: Union[str, Path],
-        transforms: Optional[Callable] = None,
         batch_size: int = 10,
         mae_batch_size: Optional[int] = None,
-        mae_transforms: Optional[Callable] = None,
+        mae_train_transforms: Optional[Callable] = None,
+        mae_val_transforms: Optional[Callable] = None,
+        contrastive_train_transforms: Optional[Callable] = None,
+        contrastive_val_transforms: Optional[Callable] = None,
     ):
         super().__init__()
         self.data_dir = data_dir
-        self.transforms = transforms  # Contrastive transforms (vol1, vol2 keys)
-        self.mae_transforms = mae_transforms  # MAE transforms (volume key)
+        self.contrastive_train_transforms = contrastive_train_transforms  # Contrastive transforms (vol1, vol2 keys)
+        self.contrastive_val_transforms = contrastive_val_transforms  # Contrastive transforms (vol1, vol2 keys)
+        self.mae_train_transforms = mae_train_transforms  # MAE transforms (volume key)
+        self.mae_val_transforms = mae_val_transforms  # MAE transforms (volume key)
         self.batch_size = batch_size
         self.mae_batch_size = (
             mae_batch_size if mae_batch_size is not None else batch_size
@@ -68,12 +72,12 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
         self.contrastive_train_dataset = ContrastivePatientDataset(
             data_dir=self.data_dir,
             patients_included=set(train_patients),
-            transforms=self.transforms,
+            transforms=self.contrastive_train_transforms,
         )
         self.contrastive_val_dataset = ContrastivePatientDataset(
             data_dir=self.data_dir,
             patients_included=set(val_patients),
-            transforms=self.transforms,
+            transforms=self.contrastive_val_transforms,
         )
 
         # MAE datasets (exclude files that are in contrastive pairs)
@@ -81,13 +85,13 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
         self.mae_train_dataset = MAEDataset(
             data_dir=self.data_dir,
             patients_included=set(train_patients),
-            transforms=self.mae_transforms,  # Use MAE-specific transforms
+            transforms=self.mae_train_transforms,  # Use MAE-specific transforms
             exclude_contrastive_pairs=True,
         )
         self.mae_val_dataset = MAEDataset(
             data_dir=self.data_dir,
             patients_included=set(val_patients),
-            transforms=self.mae_transforms,  # Use MAE-specific transforms
+            transforms=self.mae_val_transforms,  # Use MAE-specific transforms
             exclude_contrastive_pairs=True,
         )
 

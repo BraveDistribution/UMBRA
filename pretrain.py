@@ -1,23 +1,27 @@
 from pathlib import Path
-from typing import Optional, Sequence, Union
+from typing import Optional, Sequence, Union, Callable, Optional
+from typing import cast
 
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 from fire import Fire
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.strategies import DDPStrategy
+from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.strategies import DDPStrategy
 
 from data.combined_datamodule import CombinedDataModule
 from data.contrastive_datamodule import ContrastiveDataModule
 from data.mae_datamodule import MAEDataModule
 from models.foundation import ContrastiveMAEPretrainer, MAEPretrainer
+from transforms.composed import get_mae_transforms, get_contrastive_transforms
 
 
 def _create_data_module(
     pretraining_mode: str,
     data_dir: Union[str, Path],
-    mae_transforms,
-    contrastive_transforms,
+    mae_train_transforms: Optional[Callable],
+    mae_val_transforms: Optional[Callable],
+    contrastive_train_transforms: Optional[Callable],
+    contrastive_val_transforms: Optional[Callable],
     batch_size: int,
     mae_batch_size: Optional[int],
 ) -> Union[MAEDataModule, ContrastiveDataModule, CombinedDataModule]:
@@ -26,8 +30,10 @@ def _create_data_module(
     Args:
         pretraining_mode: One of 'mae_only', 'contrastive_only', or 'combined'
         data_dir: Directory containing training data
-        mae_transforms: Transforms for MAE training
-        contrastive_transforms: Transforms for contrastive learning
+        mae_train_transforms: Transforms for MAE training
+        mae_val_transforms: Transforms for MAE validation
+        contrastive_train_transforms: Transforms for contrastive learning training
+        contrastive_val_transforms: Transforms for contrastive learning validation
         batch_size: Batch size for training
         mae_batch_size: Optional separate batch size for MAE in combined mode
 
@@ -39,17 +45,25 @@ def _create_data_module(
     """
     if pretraining_mode == "mae_only":
         return MAEDataModule(
-            data_dir=data_dir, transforms=mae_transforms, batch_size=batch_size
+            data_dir=data_dir, 
+            train_transforms=mae_train_transforms, 
+            val_transforms=mae_val_transforms, 
+            batch_size=batch_size
         )
     elif pretraining_mode == "contrastive_only":
         return ContrastiveDataModule(
-            data_dir=data_dir, transforms=contrastive_transforms, batch_size=batch_size
+            data_dir=data_dir, 
+            train_transforms=contrastive_train_transforms, 
+            val_transforms=contrastive_val_transforms, 
+            batch_size=batch_size
         )
     elif pretraining_mode == "combined":
         return CombinedDataModule(
             data_dir=data_dir,
-            transforms=contrastive_transforms,  # For contrastive pairs (vol1, vol2)
-            mae_transforms=mae_transforms,  # For MAE single volumes (volume key)
+            contrastive_train_transforms=contrastive_train_transforms,  # For contrastive pairs (vol1, vol2)
+            contrastive_val_transforms=contrastive_val_transforms,  # For contrastive pairs (vol1, vol2)
+            mae_train_transforms=mae_train_transforms,  # For MAE single volumes (volume key)
+            mae_val_transforms=mae_val_transforms,  # For MAE single volumes (volume key)
             batch_size=batch_size,
             mae_batch_size=mae_batch_size,
         )
@@ -90,7 +104,6 @@ def _create_or_load_model(
             return MAEPretrainer(
                 patch_size=patch_size,
                 learning_rate=learning_rate,
-                pretraining_mode=pretraining_mode,
             )
         else:
             # Use ContrastiveMAEPretrainer for contrastive or combined mode
@@ -120,99 +133,29 @@ def train(
 
     # Define transforms based on pretraining mode
     # MAE-only transforms (single volume key)
-    mae_transforms = T.Compose(  # pyright: ignore[reportPrivateImportUsage]
-        [
-            T.RandAdjustContrastd(  # pyright: ignore[reportPrivateImportUsage]
-                keys="volume", prob=0.5, gamma=(0.8, 1.2)
-            ),
-            T.RandGibbsNoised(  # pyright: ignore[reportPrivateImportUsage]
-                keys="volume", prob=0.3, alpha=(0.4, 0.8)
-            ),
-            T.RandGaussianNoised(  # pyright: ignore[reportPrivateImportUsage]
-                keys="volume", prob=0.3, mean=0.0, std=0.1
-            ),
-            T.RandFlipd(  # pyright: ignore[reportPrivateImportUsage]
-                keys="volume", prob=0.5, spatial_axis=0
-            ),
-            T.RandFlipd(  # pyright: ignore[reportPrivateImportUsage]
-                keys="volume", prob=0.5, spatial_axis=1
-            ),
-            T.RandFlipd(  # pyright: ignore[reportPrivateImportUsage]
-                keys="volume", prob=0.5, spatial_axis=2
-            ),
-            T.RandRotated(  # pyright: ignore[reportPrivateImportUsage]
-                keys="volume",
-                range_x=0.1,
-                range_y=0.1,
-                range_z=0.1,
-                prob=0.8,
-                mode="bilinear",
-                padding_mode="zeros",
-            ),
-            T.RandZoomd(  # pyright: ignore[reportPrivateImportUsage]
-                keys="volume",
-                min_zoom=0.9,
-                max_zoom=1.1,
-                prob=0.8,
-                mode="trilinear",
-                align_corners=True,
-            ),
-            # Removed ToTensord to avoid MetaTensor collate issues
-            # The dataset returns numpy arrays which PyTorch can handle directly
-        ]
+    mae_train_transforms = get_mae_transforms(
+        keys=("volume",),
+        patch_size=patch_size,
+        val_mode=False,
+    )
+    mae_val_transforms = get_mae_transforms(
+        keys=("volume",),
+        patch_size=patch_size,
+        val_mode=True,
     )
 
     # Contrastive transforms (vol1, vol2 keys) - used for contrastive_only and combined
-    contrastive_transforms = T.Compose(  # pyright: ignore[reportPrivateImportUsage]
-        [
-            T.RandAdjustContrastd(  # pyright: ignore[reportPrivateImportUsage]
-                keys="vol1", prob=0.5, gamma=(0.8, 1.2)
-            ),
-            T.RandAdjustContrastd(  # pyright: ignore[reportPrivateImportUsage]
-                keys="vol2", prob=0.5, gamma=(0.8, 1.2)
-            ),
-            T.RandGibbsNoised(  # pyright: ignore[reportPrivateImportUsage]
-                keys="vol1", prob=0.3, alpha=(0.4, 0.8)
-            ),
-            T.RandGibbsNoised(  # pyright: ignore[reportPrivateImportUsage]
-                keys="vol2", prob=0.3, alpha=(0.4, 0.8)
-            ),
-            T.RandGaussianNoised(  # pyright: ignore[reportPrivateImportUsage]
-                keys="vol1", prob=0.3, mean=0.0, std=0.1
-            ),
-            T.RandGaussianNoised(  # pyright: ignore[reportPrivateImportUsage]
-                keys="vol2", prob=0.3, mean=0.0, std=0.1
-            ),
-            T.RandFlipd(  # pyright: ignore[reportPrivateImportUsage]
-                keys=("vol1", "vol2"), prob=0.5, spatial_axis=0
-            ),
-            T.RandFlipd(  # pyright: ignore[reportPrivateImportUsage]
-                keys=("vol1", "vol2"), prob=0.5, spatial_axis=1
-            ),
-            T.RandFlipd(  # pyright: ignore[reportPrivateImportUsage]
-                keys=("vol1", "vol2"), prob=0.5, spatial_axis=2
-            ),
-            T.RandRotated(  # pyright: ignore[reportPrivateImportUsage]
-                keys=("vol1", "vol2"),
-                range_x=0.1,
-                range_y=0.1,
-                range_z=0.1,
-                prob=0.8,
-                mode=("bilinear", "bilinear"),
-                padding_mode="zeros",
-            ),
-            T.RandZoomd(  # pyright: ignore[reportPrivateImportUsage]
-                keys=("vol1", "vol2"),
-                min_zoom=0.9,
-                max_zoom=1.1,
-                prob=0.8,
-                mode=("trilinear", "trilinear"),
-                align_corners=(True, True),
-            ),
-            T.ToTensord(  # pyright: ignore[reportPrivateImportUsage]
-                keys=("vol1", "vol2")
-            ),
-        ]
+    contrastive_train_transforms = get_contrastive_transforms(
+        keys=("vol1", "vol2"),
+        patch_size=patch_size,
+        conservative_mode=True,
+        val_mode=False,
+    )
+    contrastive_val_transforms = get_contrastive_transforms(
+        keys=("vol1", "vol2"),
+        patch_size=patch_size,
+        conservative_mode=True,
+        val_mode=True,
     )
 
     checkpoint_callback = ModelCheckpoint(
@@ -223,8 +166,10 @@ def train(
     data_module = _create_data_module(
         pretraining_mode=pretraining_mode,
         data_dir=data_dir,
-        mae_transforms=mae_transforms,
-        contrastive_transforms=contrastive_transforms,
+        mae_train_transforms=mae_train_transforms,
+        mae_val_transforms=mae_val_transforms,
+        contrastive_train_transforms=contrastive_train_transforms,
+        contrastive_val_transforms=contrastive_val_transforms,
         batch_size=batch_size,
         mae_batch_size=mae_batch_size,
     )

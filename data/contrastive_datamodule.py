@@ -3,10 +3,10 @@ from typing import Callable, Optional, Union
 from pathlib import Path
 
 try:
-    import pytorch_lightning as pl
-    from pytorch_lightning.utilities.types import EVAL_DATALOADERS  # noqa: F401
+    import lightning.pytorch as pl
+    from lightning.pytorch.utilities.types import EVAL_DATALOADERS  # noqa: F401
 except ImportError:
-    # Fallback if pytorch_lightning is not installed
+    # Fallback if lightning.pytorch is not installed
     pl = None  # type: ignore
     EVAL_DATALOADERS = None  # type: ignore
 from sklearn.model_selection import train_test_split
@@ -24,12 +24,14 @@ class ContrastiveDataModule(pl.LightningDataModule):  # type: ignore
     def __init__(
         self,
         data_dir: Union[str, Path],
-        transforms: Optional[Callable] = None,
+        train_transforms: Optional[Callable] = None,
+        val_transforms: Optional[Callable] = None,
         batch_size: int = 10,
     ):
         super().__init__()
         self.data_dir = data_dir
-        self.transforms = transforms
+        self.train_transforms = train_transforms
+        self.val_transforms = val_transforms
         self.batch_size = batch_size
         self.setup(None)
 
@@ -55,12 +57,12 @@ class ContrastiveDataModule(pl.LightningDataModule):  # type: ignore
         self.train_dataset = ContrastivePatientDataset(
             data_dir=self.data_dir,
             patients_included=set(train_patients),
-            transforms=self.transforms,
+            transforms=self.train_transforms,
         )
         self.val_dataset = ContrastivePatientDataset(
             data_dir=self.data_dir,
             patients_included=set(val_patients),
-            transforms=self.transforms,
+            transforms=self.val_transforms,
         )
 
     def train_dataloader(self):

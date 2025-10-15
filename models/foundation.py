@@ -11,14 +11,25 @@ Architecture:
 - SegmentationFineTuner: Parameter-efficient fine-tuning with LoRA
 """
 
-from typing import Any, Dict, Optional, Sequence, Tuple, Union, List
+from __future__ import annotations
 
-import pytorch_lightning as pl
+__all__ = [
+    "MAEPretrainer",
+    "ContrastiveMAEPretrainer",
+]
+
+from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Union, List
+from typing import cast
+from copy import deepcopy
+
+import lightning.pytorch as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from monai.networks.nets.swin_unetr import SwinUNETR
-from augmentations.mask import random_mask
+
+from models.networks import SwinMAE
+from utils.masking import generate_random_mask_conv, up_to_voxel_space
+from utils.misc import ensure_tuple_dim
 
 
 class MAEPretrainer(pl.LightningModule):  # type: ignore
@@ -26,32 +37,58 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
     Base class for Masked Autoencoder (MAE) pretraining on 3D medical images.
 
     This model learns visual representations by reconstructing masked input volumes.
-    The encoder is based on Swin-UNETR architecture.
-
-    Args:
-        patch_size: Size of patches for Swin Transformer (default: (4, 4, 4))
-        learning_rate: Initial learning rate (default: 1e-4)
-        img_size: Input image dimensions (default: (96, 96, 96))
-        feature_size: Base feature dimension for Swin-UNETR (default: 24)
-        mask_ratio: Ratio of volume to mask for MAE (default: 0.6)
-        warmup_epochs: Number of warmup epochs (default: 1)
-        max_epochs: Total number of training epochs (default: 30)
-        min_lr: Minimum learning rate for cosine annealing (default: 1e-5)
-        pretraining_mode: Mode for pretraining ('mae_only', 'contrastive_only', 'combined')
+    The encoder is based on MONAI's `SwinTransformer` architecture.
     """
-
     def __init__(
         self,
-        patch_size: Sequence[int] = (4, 4, 4),
+        *,
+        # Encoder args
+        in_channels: int = 1,
+        patch_size: Union[int, Sequence[int]] = 2,
+        depths: Sequence[int] = (2, 2, 6, 2),
+        num_heads: Sequence[int] = (3, 6, 12, 24),
+        window_size: Union[Sequence[int], int] = 7,
+        feature_size: int = 48,
+        use_v2: bool = True,
+        spatial_dims: int = 3,
+        use_checkpoint: bool = True,
+        extra_swin_kwargs: Optional[Dict[str, Any]] = None,
+        gn_groups: int = 8,
+        # Decoder args
+        width: int = 32,
+        # Weight init
+        weight_init_fn: Optional[Callable[[nn.Module], None]] = None,
+        # Masking args
+        mask_ratio: Union[float, Sequence[float]] = [0.6, 0.75],
+        img_size: Sequence[int] = (96, 96, 96),
+        # Optimizer args
         learning_rate: float = 1e-4,
-        img_size: Tuple[int, int, int] = (96, 96, 96),
-        feature_size: int = 24,
-        mask_ratio: float = 0.6,
-        warmup_epochs: int = 1,
-        max_epochs: int = 30,
         min_lr: float = 1e-5,
-        pretraining_mode: str = "mae_only",
+        max_epochs: int = 30,
+        warmup_epochs: int = 1,
     ) -> None:
+        """
+        Args:
+            in_channels: Number of input channels (default: 1)
+            patch_size: Size of patches for Swin Transformer (default: 2)
+            depths: Depth of the SwinTransformer (default: (2, 2, 6, 2))
+            num_heads: Number of attention heads for SwinTransformer (default: (3, 6, 12, 24))
+            window_size: Size of the window for SwinTransformer (default: 7)
+            feature_size: Feature size for SwinTransformer (default: 48)
+            use_v2: Use v2 version of SwinTransformer (default: True)
+            spatial_dims: Spatial dimensions (default: 3)
+            use_checkpoint: Use checkpointing for SwinTransformer (default: True)
+            extra_swin_kwargs: Extra keyword arguments for SwinTransformer (default: None)
+            gn_groups: Number of groups for GroupNorm (default: 8)
+            width: Width of the FPN decoder (default: 32)
+            weight_init_fn: Function to initialize weights (default: None)
+            mask_ratio: Ratio of volume to mask for MAE (default: [0.6, 0.75])
+            img_size: Input image dimensions (default: (96, 96, 96))
+            learning_rate: Initial learning rate (default: 1e-4)
+            min_lr: Minimum learning rate for cosine annealing (default: 1e-5)
+            max_epochs: Total number of training epochs (default: 30)
+            warmup_epochs: Number of warmup epochs (default: 1)
+        """
         super().__init__()
         self.save_hyperparameters()
 
@@ -59,37 +96,41 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
         self.warmup_epochs: int = warmup_epochs
         self.max_epochs: int = max_epochs
         self.min_lr: float = min_lr
-        self.mask_ratio: float = mask_ratio
         self.learning_rate: float = learning_rate
-        self.pretraining_mode: str = pretraining_mode
+        self.mask_ratio: Sequence[float] = ensure_tuple_dim(mask_ratio, 2)
+        self.img_size: Sequence[int] = ensure_tuple_dim(img_size, 3)
+        self.num_downsamples: int = len(depths)
+        self.patch_size: Sequence[int] = ensure_tuple_dim(patch_size, 3)
 
         # Type hints for PyTorch Lightning attributes
         self.trainer: Optional[Any]
 
-        if SwinUNETR is None:
-            raise ImportError("monai package is required for SwinUNETR")
-
-        # Encoder (Swin-UNETR)
-        self.encoder: Any = SwinUNETR(
-            in_channels=1,
-            out_channels=1,
+        # Encoder
+        self.model: Any = SwinMAE(
+            in_channels=in_channels,
+            patch_size=patch_size,
+            depths=depths,
+            num_heads=num_heads,
+            window_size=window_size,
             feature_size=feature_size,
-            use_checkpoint=True,
-            use_v2=True,
+            use_v2=use_v2,
+            spatial_dims=spatial_dims,
+            use_checkpoint=use_checkpoint,
+            extra_swin_kwargs=extra_swin_kwargs,
+            gn_groups=gn_groups,
+            width=width,
         )
 
-    def forward_encoder(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass through encoder only.
+        # Initialize weights
+        if weight_init_fn is not None:
+            try:
+                self.model.apply(weight_init_fn)
+            except Exception:
+                print("Weight initialization function failed for encoder; skipping.")
 
-        Args:
-            x: Input tensor
-
-        Returns:
-            Encoded features
-        """
-        features: torch.Tensor = self.encoder.swinViT(x)[-1]
-        return features
+    @property
+    def encoder(self) -> nn.Module:
+        return self.model.encoder
 
     def forward_mae(
         self, x: torch.Tensor
@@ -104,11 +145,27 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
             Tuple of (reconstruction, mask, original)
         """
         original: torch.Tensor = x.clone()
-        masked_x: torch.Tensor
-        mask: torch.Tensor
-        masked_x, mask = random_mask(x, self.mask_ratio, 4)
-        reconstruction: torch.Tensor = self.encoder(masked_x)
-        return reconstruction, mask, original
+
+        # Generate mask at patch level
+        mask_patch: torch.Tensor = generate_random_mask_conv(
+            x_spatial=self.img_size,
+            patch_size=self.patch_size,
+            num_downsamples=self.num_downsamples,
+            batch_size=x.shape[0],
+            mask_ratio=self.mask_ratio,
+            return_kind="grid",
+            device=x.device,
+        )
+        pred: torch.Tensor = self.model(x, mask_patch)
+
+        # Upsample mask to voxel level for reconstruction loss
+        mask_voxel: torch.Tensor = up_to_voxel_space(
+            mask_finest_grid=mask_patch,
+            original_spatial=self.img_size,
+            patch_size=self.patch_size,
+        )
+
+        return pred, mask_voxel, original
 
     def training_step(
         self, batch: Dict[str, torch.Tensor], batch_idx: int
@@ -246,78 +303,95 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
     This model learns robust visual representations by:
     1. Reconstructing masked input volumes (MAE objective from base class)
     2. Maximizing agreement between augmented views (MoCo objective)
-
-    Args:
-        patch_size: Size of patches for Swin Transformer (default: (4, 4, 4))
-        learning_rate: Initial learning rate (default: 1e-4)
-        img_size: Input image dimensions (default: (96, 96, 96))
-        feature_size: Base feature dimension for Swin-UNETR (default: 24)
-        mask_ratio: Ratio of volume to mask for MAE (default: 0.6)
-        temperature: Temperature parameter for contrastive loss (default: 0.6)
-        queue_size: Size of negative sample queue for MoCo (default: 4096)
-        momentum: Momentum coefficient for updating key encoder (default: 0.996)
-        warmup_epochs: Number of warmup epochs (default: 1)
-        max_epochs: Total number of training epochs (default: 30)
-        min_lr: Minimum learning rate for cosine annealing (default: 1e-5)
-        pretraining_mode: Mode for pretraining ('mae_only', 'contrastive_only', 'combined')
     """
-
     def __init__(
         self,
-        patch_size: Sequence[int] = (4, 4, 4),
-        learning_rate: float = 1e-4,
-        img_size: Tuple[int, int, int] = (96, 96, 96),
-        feature_size: int = 24,
-        mask_ratio: float = 0.6,
-        temperature: float = 0.6,
-        queue_size: int = 4096,
+        *,
+        # Encoder args
+        in_channels: int = 1,
+        patch_size: Union[int, Sequence[int]] = 2,
+        depths: Sequence[int] = (2, 2, 6, 2),
+        num_heads: Sequence[int] = (3, 6, 12, 24),
+        window_size: Union[Sequence[int], int] = 7,
+        feature_size: int = 48,
+        use_v2: bool = True,
+        spatial_dims: int = 3,
+        extra_swin_kwargs: Optional[Dict[str, Any]] = None,
+        weight_init_fn: Optional[Callable[[nn.Module], None]] = None,
+        # Masking args
+        mask_ratio: Union[float, Sequence[float]] = [0.6, 0.75],
+        img_size: Sequence[int] = (96, 96, 96),
+        # Contrastive learning args
+        temperature: float = 0.1,
+        queue_size: int = 16384,
         momentum: float = 0.996,
-        warmup_epochs: int = 1,
-        max_epochs: int = 30,
+        # Optimizer args
+        learning_rate: float = 1e-4,
         min_lr: float = 1e-5,
+        max_epochs: int = 30,
+        warmup_epochs: int = 1,
+        # Pretraining mode
         pretraining_mode: str = "contrastive_only",
     ) -> None:
+        """
+        Args:
+            in_channels: Number of input channels (default: 1)
+            patch_size: Size of patches for Swin Transformer (default: 2)
+            depths: Depth of the SwinTransformer (default: (2, 2, 6, 2))
+            num_heads: Number of attention heads for SwinTransformer (default: (3, 6, 12, 24))
+            window_size: Size of the window for SwinTransformer (default: 7)
+            feature_size: Feature size for SwinTransformer (default: 48)
+            use_v2: Use v2 version of SwinTransformer (default: True)
+            spatial_dims: Spatial dimensions (default: 3)
+            use_checkpoint: Use checkpointing for SwinTransformer (default: True)
+            extra_swin_kwargs: Extra keyword arguments for SwinTransformer (default: None)
+            gn_groups: Number of groups for GroupNorm (default: 8)
+            width: Width of the FPN decoder (default: 32)
+            weight_init_fn: Function to initialize weights (default: None)
+            mask_ratio: Ratio of volume to mask for MAE (default: [0.6, 0.75])
+            img_size: Input image dimensions (default: (96, 96, 96))
+            temperature: Temperature parameter for contrastive loss (default: 0.1)
+            queue_size: Size of negative sample queue for MoCo (default: 16384)
+            momentum: Momentum coefficient for updating key encoder (default: 0.996)
+            learning_rate: Initial learning rate (default: 1e-4)
+            min_lr: Minimum learning rate for cosine annealing (default: 1e-5)
+            max_epochs: Total number of training epochs (default: 30)
+            warmup_epochs: Number of warmup epochs (default: 1)
+        """
         # Initialize base class (MAE components)
         super().__init__(
+            in_channels=in_channels,
             patch_size=patch_size,
-            learning_rate=learning_rate,
-            img_size=img_size,
+            depths=depths,
+            num_heads=num_heads,
+            window_size=window_size,
             feature_size=feature_size,
+            use_v2=use_v2,
+            spatial_dims=spatial_dims,
+            extra_swin_kwargs=extra_swin_kwargs,
+            img_size=img_size,
             mask_ratio=mask_ratio,
-            warmup_epochs=warmup_epochs,
-            max_epochs=max_epochs,
+            learning_rate=learning_rate,
             min_lr=min_lr,
-            pretraining_mode=pretraining_mode,
+            max_epochs=max_epochs,
+            warmup_epochs=warmup_epochs,
         )
 
-        # Store contrastive-specific hyperparameters
+        # Store extra (contrastive + pretraining mode) hyperparameters
         self.temperature: float = temperature
         self.momentum: float = momentum
         self.queue_size: int = queue_size
+        self.pretraining_mode: str = pretraining_mode
 
-        # Key encoder (momentum-updated)
-        self.encoder_m: Any = SwinUNETR(
-            in_channels=1,
-            out_channels=1,
-            feature_size=feature_size,
-            use_checkpoint=True,
-            use_v2=True,
-        )
+        # Initialize momentum (key) encoder with query encoder weights
+        self.encoder_m = deepcopy(self.encoder)
+        for param in self.encoder_m.parameters():
+            param.requires_grad = False
 
-        # Initialize momentum encoder with query encoder weights
-        for param_q, param_k in zip(
-            self.encoder.parameters(), self.encoder_m.parameters()
-        ):
-            param_k.data.copy_(param_q.data)
-            param_k.requires_grad = False
+        # Deterministic encoder output dimension for Swin Transformer
+        encoder_dim: int = feature_size * 2**(len(depths))
 
-        # Determine encoder output dimension
-        with torch.no_grad():
-            dummy_input: torch.Tensor = torch.zeros(1, 1, *img_size)
-            features: torch.Tensor = self.encoder.swinViT(dummy_input)[-1]
-            encoder_dim: int = features.shape[1]
-
-        # Query projection head
+        # Query projection head + optional weight init
         self.projection: nn.Sequential = nn.Sequential(
             nn.AdaptiveAvgPool3d(1),
             nn.Flatten(),
@@ -325,22 +399,16 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
             nn.ReLU(),
             nn.Linear(512, 128),
         )
+        if weight_init_fn is not None:
+            try:
+                self.projection.apply(weight_init_fn)
+            except Exception:
+                print("Weight initialization function failed for projection; skipping.")
 
-        # Key projection head
-        self.projection_m: nn.Sequential = nn.Sequential(
-            nn.AdaptiveAvgPool3d(1),
-            nn.Flatten(),
-            nn.Linear(encoder_dim, 512),
-            nn.ReLU(),
-            nn.Linear(512, 128),
-        )
-
-        # Initialize momentum projection with query projection weights
-        for param_q, param_k in zip(
-            self.projection.parameters(), self.projection_m.parameters()
-        ):
-            param_k.data.copy_(param_q.data)
-            param_k.requires_grad = False
+        # Initialize momentum (key) projection head with query projection weights
+        self.projection_m: nn.Sequential = deepcopy(self.projection)
+        for param in self.projection_m.parameters():
+            param.requires_grad = False
 
         # MoCo queue for storing negative samples
         self.register_buffer("queue", F.normalize(torch.randn(128, queue_size), dim=0))
@@ -436,38 +504,6 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         dist.all_gather(tensors_gather, tensor, async_op=False)
         return torch.cat(tensors_gather, dim=0)
 
-    def forward_encoder(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass through encoder only.
-
-        Args:
-            x: Input tensor
-
-        Returns:
-            Encoded features
-        """
-        features: torch.Tensor = self.encoder.swinViT(x)[-1]
-        return features
-
-    def forward_mae(
-        self, x: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Masked autoencoding forward pass.
-
-        Args:
-            x: Input tensor
-
-        Returns:
-            Tuple of (reconstruction, mask, original)
-        """
-        original: torch.Tensor = x.clone()
-        masked_x: torch.Tensor
-        mask: torch.Tensor
-        masked_x, mask = random_mask(x, self.mask_ratio, 4)
-        reconstruction: torch.Tensor = self.encoder(masked_x)
-        return reconstruction, mask, original
-
     def forward_contrastive(self, x: torch.Tensor) -> torch.Tensor:
         """
         Contrastive learning forward pass through query encoder.
@@ -478,7 +514,7 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         Returns:
             Normalized query embeddings
         """
-        features: torch.Tensor = self.forward_encoder(x)
+        features: torch.Tensor = self.encoder(x)[-1]
         z: torch.Tensor = self.projection(features)
         return F.normalize(z, dim=1)
 
@@ -493,7 +529,7 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         Returns:
             Normalized key embeddings
         """
-        features: torch.Tensor = self.encoder_m.swinViT(x)[-1]
+        features: torch.Tensor = self.encoder_m(x)[-1]
         z: torch.Tensor = self.projection_m(features)
         return F.normalize(z, dim=1)
 
@@ -717,11 +753,15 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
 
         # Dataloader 0 with contrastive pairs (contrastive_only or combined mode)
         if not is_mae_only_batch:
-            return self._process_contrastive_batch(actual_batch, is_training=True)
+            return self._process_contrastive_batch(
+                cast(Dict[str, torch.Tensor], actual_batch), is_training=True
+            )
 
         # Dataloader 1: Single volumes (MAE only, includes scan_* files)
         else:
-            return self._process_mae_batch(actual_batch, is_training=True)
+            return self._process_mae_batch(
+                cast(Dict[str, torch.Tensor], actual_batch), is_training=True
+            )
 
     def validation_step(
         self, batch: Dict[str, torch.Tensor], batch_idx: int, dataloader_idx: int = 0

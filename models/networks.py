@@ -1,124 +1,187 @@
-from typing import Any, Sequence
+"""PyTorch-based networks."""
+
+from __future__ import annotations
+
+__all__ = [
+    "SwinEncoder",
+    "SwinMAE",
+    "Swinv2LateFusionFPNDecoder",
+]
+
+from typing import Any, Sequence, Literal, Union, Dict, Optional
+from typing import cast, TYPE_CHECKING
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from monai.networks.nets.swin_unetr import SwinTransformer as SwinViT
+from monai.networks.nets.swin_unetr import SwinTransformer
+
+from .blocks import (
+    FPNDecoderFeaturesOnly, 
+    VoxelShuffleHead3D,
+    PatchEmbedWithMask,
+)
+from utils.misc import ensure_tuple_dim
+from utils.nets import swap_in_to_gn
+
+if TYPE_CHECKING:
+    from monai.networks.blocks.patchembedding import PatchEmbed
 
 
-def ensure_tuple_dim(
-    value: Any | Sequence[Any],
-    dim: int,
-) -> tuple[Any, ...]:
-    """Ensure that a value is a tuple of length `dim`."""
-    if isinstance(value, (list, tuple)):
-        if len(value) == dim:
-            return tuple(value)
-        else:
-            msg = f"Expected tuple of length {dim}, got {len(value)}"
-            raise ValueError(msg)
-    elif isinstance(value, int | float):
-        return (value,) * dim
-    else:
-        msg = f"Expected tuple or list, got {type(value)}"
-        raise ValueError(msg)
-
-
-class ConvBNAct3d(nn.Module):
+class SwinEncoder(SwinTransformer):
     """
-    Convolutional block with normalization and activation.
+    Wrapper for MONAI's `SwinTransformer`.
     """
+    def __init__(
+        self, 
+        in_channels: int = 1,
+        patch_size: Union[int, Sequence[int]] = 2,
+        depths: Sequence[int] = (2, 2, 6, 2),
+        num_heads: Sequence[int] = (3, 6, 12, 24),
+        window_size: Union[Sequence[int], int] = 7,
+        feature_size: int = 48,
+        use_v2: bool = True,
+        use_checkpoint: bool = True,
+        spatial_dims: int = 3,
+        **kwargs,
+    ):
+        super().__init__(
+            in_chans=in_channels,
+            embed_dim=feature_size,
+            depths=depths,
+            num_heads=num_heads,
+            window_size=ensure_tuple_dim(window_size, spatial_dims),
+            patch_size=ensure_tuple_dim(patch_size, spatial_dims),
+            use_v2=use_v2,
+            use_checkpoint=use_checkpoint,
+            **kwargs,
+        )
 
+
+class SwinEncoderMAE(SwinEncoder):
+    """
+    Swin ViT encoder with mask token injection support for MAE.
+
+    Same args as `SwinEncoder`.
+    """
     def __init__(
         self,
-        in_ch: int,
-        out_ch: int,
-        k: int = 3,
-        s: int = 1,
-        p: int = 1,
-        norm: str = "instance",
         *,
-        act_kwargs: dict[str, Any] | None = None,
+        in_channels: int = 1,
+        patch_size: Union[int, Sequence[int]] = 2,
+        depths: Sequence[int] = (2, 2, 6, 2),
+        num_heads: Sequence[int] = (3, 6, 12, 24),
+        window_size: Union[Sequence[int], int] = 7,
+        feature_size: int = 48,
+        use_v2: bool = True,
+        use_checkpoint: bool = True,
+        spatial_dims: int = 3,
+        gn_groups: int = 8,
+        **kwargs,
     ):
-        if act_kwargs is None:
-            act_kwargs = {}
-
-        super().__init__()
-        if norm == "instance":
-            Norm = nn.InstanceNorm3d
-        elif norm == "group":
-            Norm = lambda c: nn.GroupNorm(num_groups=min(8, c), num_channels=c)
-        else:
-            Norm = nn.BatchNorm3d
-
-        self.block = nn.Sequential(
-            nn.Conv3d(in_ch, out_ch, kernel_size=k, stride=s, padding=p, bias=False),
-            Norm(out_ch),
-            nn.ReLU(),
+        super().__init__(
+            in_channels=in_channels,
+            patch_size=patch_size,
+            depths=depths,
+            num_heads=num_heads,
+            window_size=window_size,
+            feature_size=feature_size,
+            use_v2=use_v2,
+            use_checkpoint=use_checkpoint,
+            spatial_dims=spatial_dims,
+            **kwargs,
         )
+        # Replace patch embed with patch embed + mask injector ->
+        # -> allows masking on the token space
+        patch_embed_wrapper = PatchEmbedWithMask(
+            patch_embed=cast(PatchEmbed, self.patch_embed), embed_dim=feature_size
+        )
+        self.patch_embed = patch_embed_wrapper
 
-    def forward(self, x):
-        return self.block(x)
+        # Swap InstanceNorm to GroupNorm -> less sensitive to mask ratio
+        swap_in_to_gn(self, groups=gn_groups)
 
 
-class FPNLightDecoder3D(nn.Module):
+class SwinMAE(nn.Module):
     """
-    Top-down FPN with narrow width and one 3x3 smooth per level.
-    in_chans: channels of encoder features [c1,c2,c3,c4,c5] (f1 highest res)
-    width: lateral width (e.g., 32 or 64)
+    Swin ViT encoder with mask token injection support for MAE and
+    a lightweight FPN decoder.
     """
-
     def __init__(
         self,
-        in_feats: Sequence[int],
-        in_chans: int,
-        out_channels: int,
+        *,
+        # Swin encoder args
+        in_channels: int = 1,
+        patch_size: Union[int, Sequence[int]] = 2,
+        depths: Sequence[int] = (2, 2, 6, 2),
+        num_heads: Sequence[int] = (3, 6, 12, 24),
+        window_size: Union[Sequence[int], int] = 7,
+        feature_size: int = 48,
+        use_v2: bool = True,
+        use_checkpoint: bool = True,
+        extra_swin_kwargs: Optional[Dict[str, Any]] = None,
+        spatial_dims: int = 3,
+        gn_groups: int = 8,
+        # FPN decoder args
         width: int = 32,
-        norm: str = "instance",
     ):
         super().__init__()
-        assert len(in_feats) == 5, "Need 5 scales [f1..f5]"
-        f1, f2, f3, f4, f5 = in_feats
 
-        self.in_stem = ConvBNAct3d(in_chans, width, k=3, p=1, norm=norm)
-
-        self.lat1 = nn.Conv3d(f1, width, kernel_size=1, bias=False)
-        self.lat2 = nn.Conv3d(f2, width, kernel_size=1, bias=False)
-        self.lat3 = nn.Conv3d(f3, width, kernel_size=1, bias=False)
-        self.lat4 = nn.Conv3d(f4, width, kernel_size=1, bias=False)
-        self.lat5 = nn.Conv3d(f5, width, kernel_size=1, bias=False)
-
-        # one light smooth per pyramid level after lateral+topdown add
-        self.smooth4 = ConvBNAct3d(width, width, k=3, p=1, norm=norm)
-        self.smooth3 = ConvBNAct3d(width, width, k=3, p=1, norm=norm)
-        self.smooth2 = ConvBNAct3d(width, width, k=3, p=1, norm=norm)
-        self.smooth1 = ConvBNAct3d(width, width, k=3, p=1, norm=norm)
-        self.smooth0 = ConvBNAct3d(width, width, k=3, p=1, norm=norm)
-
-        # head on the finest map (keeps params tiny)
-        self.head = nn.Conv3d(width, out_channels, kernel_size=1)
-
-    def _upsample_to(self, x: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
-        return F.interpolate(
-            x, size=ref.shape[-3:], mode="trilinear", align_corners=False
+        # Initialize encoder
+        extra_swin_kwargs = extra_swin_kwargs or {}
+        self.encoder = SwinEncoderMAE(
+            in_channels=in_channels,
+            patch_size=patch_size,
+            depths=depths,
+            num_heads=num_heads,
+            window_size=window_size,
+            feature_size=feature_size,
+            use_v2=use_v2,
+            use_checkpoint=use_checkpoint,
+            gn_groups=gn_groups,
+            **extra_swin_kwargs,
         )
 
-    def forward(self, x: torch.Tensor, feats: list[torch.Tensor]) -> torch.Tensor:
-        # feats: [f1,f2,f3,f4,f5] high->low res
-        if len(feats) != 5:
-            msg = f"[{self.__class__.__name__}] Expected 5 features, got {len(feats)}."
-            raise ValueError(msg)
+        # MONAI's `SwinTransformer` returns input after patch_embed and 4-level feature maps
+        in_feats = [feature_size * 2**i for i in range(len(depths) + 1)]
 
-        f1, f2, f3, f4, f5 = feats
-        p5 = self.lat5(f5)  # bottleneck
-        p4 = self.smooth4(self.lat4(f4) + self._upsample_to(p5, f4))
-        p3 = self.smooth3(self.lat3(f3) + self._upsample_to(p4, f3))
-        p2 = self.smooth2(self.lat2(f2) + self._upsample_to(p3, f2))
-        p1 = self.smooth1(self.lat1(f1) + self._upsample_to(p2, f1))
-        p0 = self.smooth0(self.in_stem(x) + self._upsample_to(p1, x))
-        return self.head(p0)  # logits at full res
+        # Initialize FPN decoder
+        self.feats_decoder = FPNDecoderFeaturesOnly(
+            in_feats=in_feats,
+            in_chans=in_channels,
+            out_channels=in_channels,
+            width=width,
+            norm="group",
+            norm_kwargs={"num_groups": gn_groups},
+        )
+        self.head = VoxelShuffleHead3D(
+            in_ch=width,
+            out_ch=in_channels,
+            up=patch_size,
+        )
 
+    def forward(self, x: torch.Tensor, patch_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """
+        Args:
+            x: Input tensor of shape (B, C, *spatial_dims).
+            patch_mask: Optional mask of shape (B, N) or (B, Dp, Hp, Wp) - masked=True.
+
+        Returns:
+            out (torch.Tensor): Raw logits of shape (B, C, *spatial_dims).
+        """
+        if patch_mask is not None:
+            ctx = self.encoder.patch_embed.use_mask(patch_mask)  # context manager
+        else:
+            from contextlib import nullcontext
+            ctx = nullcontext()
+
+        with ctx:
+            feats = self.encoder(x)
+
+        feats = self.feats_decoder(feats)
+        out = self.head(feats)
+        return out
 
 class Swinv2LateFusionFPNDecoder(nn.Module):
     """
@@ -133,33 +196,35 @@ class Swinv2LateFusionFPNDecoder(nn.Module):
         *,
         # SwinViT encoder args
         in_channels: int = 1,
-        patch_size: int | Sequence[int] = 2,
+        patch_size: Union[int, Sequence[int]] = 2,
         depths: Sequence[int] = (2, 2, 6, 2),
         num_heads: Sequence[int] = (3, 6, 12, 24),
-        window_size: Sequence[int] | int = 7,
+        window_size: Union[Sequence[int], int] = 7,
         feature_size: int = 48,
         use_v2: bool = True,
-        extra_swin_kwargs: dict[str, Any] | None = None,
+        use_checkpoint: bool = True,
+        extra_swin_kwargs: Optional[Dict[str, Any]] = None,
         spatial_dims: int = 3,
         # Fusion args
         n_late_fusion: int = 1,
         # FPN decoder args
         out_channels: int = 1,
         width: int = 32,
-        norm: str = "instance",
+        norm: Literal["instance", "group", "batch"] = "instance",
     ):
         super().__init__()
 
         extra_swin_kwargs = extra_swin_kwargs or {}
 
-        self.encoder = SwinViT(
-            in_chans=in_channels,
-            embed_dim=feature_size,
+        self.encoder = SwinEncoder(
+            in_channels=in_channels,
+            feature_size=feature_size,
             depths=depths,
             num_heads=num_heads,
-            window_size=ensure_tuple_dim(window_size, spatial_dims),
-            patch_size=ensure_tuple_dim(patch_size, spatial_dims),
+            window_size=window_size,
+            patch_size=patch_size,
             use_v2=use_v2,
+            use_checkpoint=use_checkpoint,
             **extra_swin_kwargs,
         )
 
@@ -167,12 +232,17 @@ class Swinv2LateFusionFPNDecoder(nn.Module):
         in_feats = [feature_size * 2**i for i in range(len(depths) + 1)]
         self.L = len(in_feats)
 
-        self.decoder = FPNLightDecoder3D(
+        self.feats_decoder = FPNDecoderFeaturesOnly(
             in_feats=in_feats,
             in_chans=in_channels,
             out_channels=out_channels,
             width=width,
             norm=norm,
+        )
+        self.head = VoxelShuffleHead3D(
+            in_ch=width,
+            out_ch=out_channels,
+            up=patch_size,
         )
 
         self.n_late_fusion = n_late_fusion
@@ -219,7 +289,7 @@ class Swinv2LateFusionFPNDecoder(nn.Module):
             x: Input tensor of shape (B, C, *spatial_dims).
 
         Returns:
-            torch.Tensor: Raw logits of shape (B, num_classes).
+            out (torch.Tensor): Raw logits of shape (B, out_channels, *spatial_dims).
         """
         x = self._reshape_input(x)
         B, n_late_fusion, C, *spatial = x.shape
@@ -249,8 +319,8 @@ class Swinv2LateFusionFPNDecoder(nn.Module):
         alpha = torch.softmax(self.fusion_weights, dim=1)
 
         # running fused features per scale; fill lazily at first modality
-        fused_in: torch.Tensor | None = None
-        fused_feats: list[torch.Tensor | None] = [None] * (alpha.shape[0] - 1)
+        fused_in: Optional[torch.Tensor] = None
+        fused_feats: list[Optional[torch.Tensor]] = [None] * (alpha.shape[0] - 1)
 
         # split input into chunks of size B and pass to encoder
         for m in range(n_late_fusion):
@@ -262,12 +332,14 @@ class Swinv2LateFusionFPNDecoder(nn.Module):
             feats_m = self._encode_one(in_m)
             for l in range(self.L):
                 w = alpha[1 + l, m]
-                fused_feats[l] = (
-                    fused_feats[l] + w * feats_m[l]
-                    if fused_feats[l]  # type: ignore
-                    is not None
-                    else w * feats_m[l]
-                )
+                prev = fused_feats[l]
+                if prev is None:
+                    fused_feats[l] = w * feats_m[l]
+                else:
+                    fused_feats[l] = prev + w * feats_m[l]
             del in_m, feats_m
 
-        return self.decoder(fused_in, fused_feats)
+        smoothed_feats = self.feats_decoder(fused_feats)
+        out = self.head(smoothed_feats)
+
+        return out
