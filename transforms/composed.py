@@ -100,17 +100,18 @@ def get_mae_transforms(
             ], weights=[1.0, 1.0]),
         ])
     
-    # Get patch size
+    # Pad and crop to match input size for volume(s) and target
+    keys_with_recon = [f"{keys[0]}_recon", *keys]
     transforms.extend([
-        SpatialPadd(keys=keys, spatial_size=input_size),
+        SpatialPadd(keys=keys_with_recon, spatial_size=input_size),
     ])
     if not val_mode:
         transforms.extend([
-            RandSpatialCropd(keys=keys, roi_size=input_size),
+            RandSpatialCropd(keys=keys_with_recon, roi_size=input_size),
         ])
     else:
         transforms.extend([
-            CenterSpatialCropd(keys=keys, roi_size=input_size),
+            CenterSpatialCropd(keys=keys_with_recon, roi_size=input_size),
         ])
 
     return cast(Callable[[Dict[str, NDArray]], Dict[str, Tensor]], Compose(transforms))
@@ -205,22 +206,32 @@ def get_contrastive_transforms(
             ], weights=[1.0, 1.0]),
         ])
     
-    # Get patch size
+    # Get all keys required for padding and cropping for volume(s) 
+    # and [optionally] target(s)
+    if recon:
+        keys_with_recon_1 = [keys[0], f"{keys[0]}_recon"]
+        keys_with_recon_2 = [keys[1], f"{keys[1]}_recon"]
+    else:
+        keys_with_recon_1 = keys[0]
+        keys_with_recon_2 = keys[1]
+    keys_with_recon = [*keys_with_recon_1, *keys_with_recon_2]
+    
+    # Pad and crop to match input size
     transforms.extend([
-        SpatialPadd(keys=keys, spatial_size=input_size),
+        SpatialPadd(keys=keys_with_recon, spatial_size=input_size),
     ])
     if not val_mode:
         if conservative_mode:
             transforms.extend([
-                RandSpatialCropd(keys=keys, roi_size=input_size),
+                RandSpatialCropd(keys=keys_with_recon, roi_size=input_size),
             ])
         else:
             transforms.extend([
-                RandSpatialCropd(keys=keys[0], roi_size=input_size),
-                RandSpatialCropd(keys=keys[1], roi_size=input_size),
+                RandSpatialCropd(keys=keys_with_recon_1, roi_size=input_size),
+                RandSpatialCropd(keys=keys_with_recon_2, roi_size=input_size),
             ])
     else:
         transforms.extend([
-            CenterSpatialCropd(keys=keys, roi_size=input_size),
+            CenterSpatialCropd(keys=keys_with_recon, roi_size=input_size),
         ])
     return cast(Callable[[Dict[str, NDArray]], Dict[str, Tensor]], Compose(transforms))
