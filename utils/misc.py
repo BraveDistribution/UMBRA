@@ -50,10 +50,11 @@ def schedule_param(
     Returns:
         Interpolated parameter value (float) or None if outside range and clamp=False.
     """
+    print(max_steps)
     start = int(start_frac * max_steps)
     end = int(end_frac * max_steps)
-    if end <= start:
-        raise ValueError("end_frac must be greater than start_frac")
+    if end < start:
+        raise ValueError("end_frac must be greater or equal to start_frac")
 
     # Clamp values
     if current <= start:
