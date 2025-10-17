@@ -64,6 +64,7 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
         self.patients_sessions = {}
         data_path: Path = Path(self.data_dir)
 
+        print(f"Walking through {data_path} to create contrastive pairs. This may take a while...")
         # Walk through sub_X directories
         for patient_dir in data_path.iterdir():
             if not patient_dir.is_dir() or not patient_dir.name.startswith("sub_"):
@@ -127,6 +128,8 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
                                     "session": session,
                                 }
                             )
+
+        print(f"Created {len(self.pairs)} contrastive pairs.")
 
     def __len__(self) -> int:
         return len(self.pairs)

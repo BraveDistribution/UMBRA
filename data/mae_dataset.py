@@ -66,6 +66,7 @@ class MAEDataset(Dataset[Dict[str, Any]]):
         m: Optional[re.Match[str]]
         full_path: str
 
+        print(f"Walking through {data_path} to create MAE dataset entries. This may take a while...")
         if self.exclude_contrastive_pairs:
             # Build structure to identify which files would be in contrastive pairs
             patients_sessions: Dict[str, Dict[str, List[Tuple[str, str]]]] = {}
@@ -121,7 +122,6 @@ class MAEDataset(Dataset[Dict[str, Any]]):
                     if len(non_scan_files) == 1:
                         self.volume_paths.append(non_scan_files[0][0])
                     # If len >= 2, these would be in contrastive pairs, so exclude
-
         else:
             # Original behavior: include ALL files
             for patient_dir in data_path.iterdir():
@@ -148,6 +148,8 @@ class MAEDataset(Dataset[Dict[str, Any]]):
                         # Include ALL scan types (no exclusion of 'scan' files)
                         full_path = str(npy_file)
                         self.volume_paths.append(full_path)
+
+        print(f"Created {len(self.volume_paths)} MAE dataset entries.")
 
     def __len__(self) -> int:
         return len(self.volume_paths)

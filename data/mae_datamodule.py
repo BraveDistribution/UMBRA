@@ -39,11 +39,13 @@ class MAEDataModule(pl.LightningDataModule):  # type: ignore
         data_path = Path(self.data_dir)
         patient_ids = []
 
+        print(f"Extracting patient IDs from {data_path}. This may take a while...")
         for patient_dir in data_path.iterdir():
             if patient_dir.is_dir() and patient_dir.name.startswith("sub_"):
                 patient_id = patient_dir.name.replace("sub_", "")
                 patient_ids.append(patient_id)
-
+        print(f"Found {len(patient_ids)} unique patient IDs.")
+        
         # Sort patient IDs to ensure consistent ordering across all data modules
         # This is critical to prevent data leakage between train/val splits
         patient_ids = sorted(patient_ids)

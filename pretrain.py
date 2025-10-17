@@ -217,6 +217,7 @@ def train(
     )
 
     # Create data module based on pretraining mode
+    print("Creating data modules...")
     data_module = _create_data_module(
         pretraining_mode=pretraining_mode,
         data_dir=data_dir,
@@ -232,6 +233,7 @@ def train(
     )
 
     # Create or load model based on pretraining mode
+    print("Creating model...")
     model = _create_or_load_model(
         pretraining_mode=pretraining_mode,
         resume_from_checkpoint=resume_from_checkpoint,
@@ -246,6 +248,7 @@ def train(
         log_model=True,
     )
 
+    print("Starting training...")
     trainer = pl.Trainer(
         accelerator="gpu",
         logger=wandb_logger,
