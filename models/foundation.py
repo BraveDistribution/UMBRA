@@ -18,7 +18,7 @@ __all__ = [
     "ContrastiveMAEPretrainer",
 ]
 
-from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Union, List
+from typing import Any, Callable, Dict, Optional, Sequence, Tuple, Union, List, Literal
 from typing import cast
 from copy import deepcopy
 
@@ -29,7 +29,7 @@ import torch.nn.functional as F
 
 from models.networks import SwinMAE
 from utils.masking import generate_random_mask_conv, up_to_voxel_space
-from utils.misc import ensure_tuple_dim
+from utils.misc import ensure_tuple_dim, schedule_param
 
 
 class MAEPretrainer(pl.LightningModule):  # type: ignore
@@ -64,37 +64,34 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
         # Optimizer args
         learning_rate: float = 1e-4,
         min_lr: float = 1e-5,
-        max_epochs: int = 30,
-        warmup_epochs: int = 1,
+        warmup: Union[int, float] = 0.05,
     ) -> None:
         """
         Args:
-            in_channels: Number of input channels (default: 1)
-            patch_size: Size of patches for Swin Transformer (default: 2)
-            depths: Depth of the SwinTransformer (default: (2, 2, 6, 2))
-            num_heads: Number of attention heads for SwinTransformer (default: (3, 6, 12, 24))
-            window_size: Size of the window for SwinTransformer (default: 7)
-            feature_size: Feature size for SwinTransformer (default: 48)
-            use_v2: Use v2 version of SwinTransformer (default: True)
-            spatial_dims: Spatial dimensions (default: 3)
-            use_checkpoint: Use checkpointing for SwinTransformer (default: True)
-            extra_swin_kwargs: Extra keyword arguments for SwinTransformer (default: None)
-            gn_groups: Number of groups for GroupNorm (default: 8)
-            width: Width of the FPN decoder (default: 32)
-            weight_init_fn: Function to initialize weights (default: None)
-            mask_ratio: Ratio of volume to mask for MAE (default: [0.6, 0.75])
-            img_size: Input image dimensions (default: (96, 96, 96))
-            learning_rate: Initial learning rate (default: 1e-4)
-            min_lr: Minimum learning rate for cosine annealing (default: 1e-5)
-            max_epochs: Total number of training epochs (default: 30)
-            warmup_epochs: Number of warmup epochs (default: 1)
+            in_channels:        Number of input channels
+            patch_size:         Size of patches for Swin Transformer
+            depths:             Depth of the SwinTransformer
+            num_heads:          Number of attention heads for SwinTransformer
+            window_size:        Size of the window for SwinTransformer
+            feature_size:       Feature size for SwinTransformer
+            use_v2:             Use v2 version of SwinTransformer
+            spatial_dims:       Spatial dimensions
+            use_checkpoint:     Use checkpointing for SwinTransformer
+            extra_swin_kwargs:  Extra keyword arguments for SwinTransformer
+            gn_groups:          Number of groups for GroupNorm
+            width:              Width of the FPN decoder
+            weight_init_fn:     Function to initialize weights
+            mask_ratio:         Ratio of volume to mask for MAE
+            img_size:           Input image dimensions
+            learning_rate:      Initial learning rate
+            min_lr:             Minimum learning rate for cosine annealing
+            warmup:             Number of warmup steps if int, or fraction of total steps if float
         """
         super().__init__()
         self.save_hyperparameters()
 
         # Store hyperparameters as instance attributes
-        self.warmup_epochs: int = warmup_epochs
-        self.max_epochs: int = max_epochs
+        self.warmup: Union[int, float] = warmup
         self.min_lr: float = min_lr
         self.learning_rate: float = learning_rate
         self.mask_ratio: Sequence[float] = ensure_tuple_dim(mask_ratio, 2)
@@ -255,8 +252,9 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
                 "Trainer must be set before calling configure_optimizers"
             )
         num_training_steps: int = self.trainer.estimated_stepping_batches
-        num_warmup_steps: int = int(
-            num_training_steps * self.warmup_epochs / self.max_epochs
+        num_warmup_steps: int = (
+            int(num_training_steps * self.warmup) if isinstance(self.warmup, float) 
+            else self.warmup
         )
 
         # Warmup scheduler
@@ -316,6 +314,7 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         feature_size: int = 48,
         use_v2: bool = True,
         spatial_dims: int = 3,
+        use_checkpoint: bool = True,
         extra_swin_kwargs: Optional[Dict[str, Any]] = None,
         weight_init_fn: Optional[Callable[[nn.Module], None]] = None,
         # Masking args
@@ -324,40 +323,65 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         # Contrastive learning args
         temperature: float = 0.1,
         queue_size: int = 16384,
-        momentum: float = 0.996,
+        momentum_kwargs: Union[Dict[str, Any], float] = {
+            "start_frac": 0.05,
+            "end_frac": 0.2,
+            "start_val": 0.996,
+            "end_val": 0.999,
+            "mode": "linear",
+            "clamp": True,
+        },
+        # Combined mode args
+        combined_kwargs: Union[Dict[str, Any], float] = {
+            "start_frac": 0.05,
+            "end_frac": 0.1,
+            "start_val": 0.05,
+            "end_val": 1.0,
+            "mode": "linear",
+            "clamp": True,
+        },
         # Optimizer args
         learning_rate: float = 1e-4,
         min_lr: float = 1e-5,
-        max_epochs: int = 30,
-        warmup_epochs: int = 1,
+        warmup: Union[int, float] = 0.05,
         # Pretraining mode
-        pretraining_mode: str = "contrastive_only",
+        pretraining_mode: Literal["contrastive_only", "combined"] = "contrastive_only",
     ) -> None:
         """
         Args:
-            in_channels: Number of input channels (default: 1)
-            patch_size: Size of patches for Swin Transformer (default: 2)
-            depths: Depth of the SwinTransformer (default: (2, 2, 6, 2))
-            num_heads: Number of attention heads for SwinTransformer (default: (3, 6, 12, 24))
-            window_size: Size of the window for SwinTransformer (default: 7)
-            feature_size: Feature size for SwinTransformer (default: 48)
-            use_v2: Use v2 version of SwinTransformer (default: True)
-            spatial_dims: Spatial dimensions (default: 3)
-            use_checkpoint: Use checkpointing for SwinTransformer (default: True)
-            extra_swin_kwargs: Extra keyword arguments for SwinTransformer (default: None)
-            gn_groups: Number of groups for GroupNorm (default: 8)
-            width: Width of the FPN decoder (default: 32)
-            weight_init_fn: Function to initialize weights (default: None)
-            mask_ratio: Ratio of volume to mask for MAE (default: [0.6, 0.75])
-            img_size: Input image dimensions (default: (96, 96, 96))
-            temperature: Temperature parameter for contrastive loss (default: 0.1)
-            queue_size: Size of negative sample queue for MoCo (default: 16384)
-            momentum: Momentum coefficient for updating key encoder (default: 0.996)
-            learning_rate: Initial learning rate (default: 1e-4)
-            min_lr: Minimum learning rate for cosine annealing (default: 1e-5)
-            max_epochs: Total number of training epochs (default: 30)
-            warmup_epochs: Number of warmup epochs (default: 1)
+            in_channels:        Number of input channels
+            patch_size:         Size of patches for Swin Transformer
+            depths:             Depth of the SwinTransformer
+            num_heads:          Number of attention heads for SwinTransformer
+            window_size:        Size of the window for SwinTransformer
+            feature_size:       Feature size for SwinTransformer
+            use_v2:             Use v2 version of SwinTransformer
+            spatial_dims:       Spatial dimensions
+            use_checkpoint:     Use checkpointing for SwinTransformer
+            extra_swin_kwargs:  Extra keyword arguments for SwinTransformer
+            weight_init_fn:     Function to initialize weights
+            mask_ratio:         Ratio of volume to mask for MAE
+            img_size:           Input image dimensions
+            temperature:        Temperature parameter for contrastive loss
+            queue_size:         Size of negative sample queue for MoCo
+            momentum_kwargs:    Keyword arguments for scheduling momentum coefficient using the 
+                                    `utils.misc.schedule_param` function. Can replace with a constant value.
+            combined_kwargs:    Keyword arguments for scheduling the combined loss weights using the
+                                    `utils.misc.schedule_param` function, so that the combined loss is: 
+                                    `loss = alpha * contrastive_loss + mae_loss`.
+                                    Can replace with a constant value.
+            learning_rate:      Initial learning rate
+            min_lr:             Minimum learning rate for cosine annealing
+            warmup:             Number of warmup steps if int, or fraction of total steps if float
+            pretraining_mode:   Pretraining mode
         """
+        # Early failure
+        if pretraining_mode not in ["contrastive_only", "combined"]:
+            raise ValueError(
+                f"Invalid pretraining mode: {pretraining_mode}. "
+                "Must be one of: 'contrastive_only', 'combined'"
+            )
+
         # Initialize base class (MAE components)
         super().__init__(
             in_channels=in_channels,
@@ -368,20 +392,21 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
             feature_size=feature_size,
             use_v2=use_v2,
             spatial_dims=spatial_dims,
+            use_checkpoint=use_checkpoint,
             extra_swin_kwargs=extra_swin_kwargs,
             img_size=img_size,
             mask_ratio=mask_ratio,
             learning_rate=learning_rate,
             min_lr=min_lr,
-            max_epochs=max_epochs,
-            warmup_epochs=warmup_epochs,
+            warmup=warmup,
         )
 
         # Store extra (contrastive + pretraining mode) hyperparameters
         self.temperature: float = temperature
-        self.momentum: float = momentum
+        self.momentum: Union[Dict[str, Any], float] = momentum_kwargs
         self.queue_size: int = queue_size
         self.pretraining_mode: str = pretraining_mode
+        self.combined_kwargs: Union[Dict[str, Any], float] = combined_kwargs
 
         # Initialize momentum (key) encoder with query encoder weights
         self.encoder_m = deepcopy(self.encoder)
@@ -431,18 +456,28 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         Update momentum encoder and projection head using exponential moving
         average.
         """
+        if self.trainer is None:
+            raise RuntimeError(
+                "Trainer must be set before calling configure_optimizers"
+            )
+
+        m: float = (
+            schedule_param(
+                current=self.trainer.global_step,
+                max_steps=self.trainer.estimated_stepping_batches,
+                **self.momentum,
+            ) if isinstance(self.momentum, dict) else self.momentum
+        )
+
         for param_q, param_k in zip(
             self.encoder.parameters(), self.encoder_m.parameters()
         ):
-            param_k.data = param_k.data * self.momentum + param_q.data * (
-                1.0 - self.momentum
-            )
+            param_k.data = param_k.data * m + param_q.data * (1.0 - m)
+            
         for param_q, param_k in zip(
             self.projection.parameters(), self.projection_m.parameters()
         ):
-            param_k.data = param_k.data * self.momentum + param_q.data * (
-                1.0 - self.momentum
-            )
+            param_k.data = param_k.data * m + param_q.data * (1.0 - m)
 
     @torch.no_grad()
     def _dequeue_and_enqueue(self, keys: torch.Tensor, metadata: torch.Tensor) -> None:
@@ -589,6 +624,11 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         self, batch: Dict[str, torch.Tensor], is_training: bool = True
     ) -> torch.Tensor:
         """Process a contrastive batch and return the loss."""
+        if self.trainer is None:
+            raise RuntimeError(
+                "Trainer must be set before calling _process_contrastive_batch"
+            )
+
         view1: torch.Tensor = batch["vol1"]
         view2: torch.Tensor = batch["vol2"]
 
@@ -645,18 +685,26 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
             self._dequeue_and_enqueue(torch.cat([k1, k2]), metadata)
 
         # Total loss
+        alpha: float = (
+            schedule_param(
+                current=self.trainer.global_step,
+                max_steps=self.trainer.estimated_stepping_batches,
+                **self.combined_kwargs,
+            ) if isinstance(self.combined_kwargs, dict) else self.combined_kwargs
+        )
         if self.pretraining_mode == "contrastive_only":
             total_loss = contrastive_loss
         else:
-            total_loss = mae_loss + contrastive_loss
+            total_loss = alpha * contrastive_loss + mae_loss
 
         # Logging
         prefix = "train" if is_training else "val"
         self.log_dict(
             {
-                f"{prefix}/loss_contrastive": total_loss,
-                f"{prefix}/mae_loss_contrastive": mae_loss,
+                f"{prefix}/loss_combined": total_loss,
                 f"{prefix}/contrastive_loss": contrastive_loss,
+                f"{prefix}/mae_loss": mae_loss,
+                f"{prefix}/loss_weight": alpha,
             },
             prog_bar=True,
             on_step=True,
@@ -805,60 +853,3 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         # Dataloader 1: Single volumes (MAE only, includes scan_* files)
         else:
             return self._process_mae_batch(actual_batch, is_training=False)
-
-    def configure_optimizers(self) -> Any:
-        """
-        Configure optimizer and learning rate scheduler.
-
-        Returns:
-            Dictionary containing optimizer and scheduler configuration
-        """
-        optimizer: torch.optim.AdamW = torch.optim.AdamW(
-            self.parameters(), lr=self.learning_rate, weight_decay=0.01
-        )
-
-        # Calculate total steps
-        if self.trainer is None:
-            raise RuntimeError(
-                "Trainer must be set before calling configure_optimizers"
-            )
-        num_training_steps: int = self.trainer.estimated_stepping_batches
-        num_warmup_steps: int = int(
-            num_training_steps * self.warmup_epochs / self.max_epochs
-        )
-
-        # Warmup scheduler
-        warmup_scheduler: torch.optim.lr_scheduler.LinearLR = (
-            torch.optim.lr_scheduler.LinearLR(
-                optimizer,
-                start_factor=1e-6,
-                end_factor=1.0,
-                total_iters=num_warmup_steps,
-            )
-        )
-
-        # Cosine decay scheduler
-        cosine_scheduler: torch.optim.lr_scheduler.CosineAnnealingLR = (
-            torch.optim.lr_scheduler.CosineAnnealingLR(
-                optimizer,
-                T_max=(num_training_steps - num_warmup_steps),
-                eta_min=self.min_lr,
-            )
-        )
-
-        # Chain schedulers together
-        lr_scheduler: torch.optim.lr_scheduler.SequentialLR = (
-            torch.optim.lr_scheduler.SequentialLR(
-                optimizer,
-                schedulers=[warmup_scheduler, cosine_scheduler],
-                milestones=[num_warmup_steps],
-            )
-        )
-
-        return {
-            "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": lr_scheduler,
-                "interval": "step",
-            },
-        }

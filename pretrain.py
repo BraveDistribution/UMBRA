@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Sequence, Union, Callable, Optional
+from typing import Optional, Sequence, Union, Callable, Optional, Literal
 from typing import cast
 
 import lightning.pytorch as pl
@@ -16,7 +16,7 @@ from transforms.composed import get_mae_transforms, get_contrastive_transforms
 
 
 def _create_data_module(
-    pretraining_mode: str,
+    pretraining_mode: Literal["mae_only", "contrastive_only", "combined"],
     data_dir: Union[str, Path],
     mae_train_transforms: Optional[Callable],
     mae_val_transforms: Optional[Callable],
@@ -75,7 +75,7 @@ def _create_data_module(
 
 
 def _create_or_load_model(
-    pretraining_mode: str,
+    pretraining_mode: Literal["mae_only", "contrastive_only", "combined"],
     resume_from_checkpoint: Optional[Union[str, Path]],
     patch_size: Sequence[int],
     learning_rate: float,
@@ -117,20 +117,27 @@ def _create_or_load_model(
 def train(
     data_dir: Union[str, Path],
     model_checkpoint_dir: Union[str, Path] = "checkpoints",
-    epochs: int = 100,
+    epochs: Optional[int] = None,
+    steps: Optional[int] = 250000,
     patch_size: Sequence[int] = (96, 96, 96),
     batch_size: int = 10,
     learning_rate: float = 1e-4,
     accumulate_grad_batches: int = 3,
     experiment_name: str = "default_experiment",
     resume_from_checkpoint: Optional[Union[str, Path]] = None,
-    pretraining_mode: str = "contrastive_only",
+    pretraining_mode: Literal["mae_only", "contrastive_only", "combined"] = "contrastive_only",
     mae_batch_size: Optional[int] = None,
+    num_checkpoints: int = 20,
 ) -> None:
     save_dir: Union[str, Path] = Path(model_checkpoint_dir) / experiment_name
 
-    import monai.transforms as T
-
+    # Early failure
+    if epochs is None and steps is None:
+        raise ValueError("Either `max_epochs` or `max_steps` must be provided")
+    
+    max_epochs = epochs if (steps is None) else None
+    max_steps = steps or -1
+    
     # Define transforms based on pretraining mode
     # MAE-only transforms (single volume key)
     mae_train_transforms = get_mae_transforms(
@@ -159,7 +166,12 @@ def train(
     )
 
     checkpoint_callback = ModelCheckpoint(
-        dirpath=save_dir, filename="{epoch:02d}-{step}", every_n_train_steps=50
+        dirpath=save_dir, 
+        filename="{epoch:02d}-{step}",
+        every_n_train_steps=max_steps // num_checkpoints if max_steps != -1 else None,
+        every_n_epochs=max_epochs // num_checkpoints if max_epochs is not None else None,
+        save_last=True,
+        save_top_k=-1,
     )
 
     # Create data module based on pretraining mode
@@ -195,7 +207,8 @@ def train(
         callbacks=[checkpoint_callback],
         precision="bf16-mixed",
         accumulate_grad_batches=accumulate_grad_batches,
-        max_epochs=epochs,
+        max_epochs=max_epochs,
+        max_steps=max_steps,
         log_every_n_steps=10,
         gradient_clip_val=1,
         gradient_clip_algorithm="norm",
