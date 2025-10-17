@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Union, Literal
+from typing import Callable, Optional, Union, Literal, Sequence
 from typing import cast
 
 from pathlib import Path
@@ -28,14 +28,18 @@ class ContrastiveDataModule(pl.LightningDataModule):  # type: ignore
         train_transforms: Optional[Callable] = None,
         val_transforms: Optional[Callable] = None,
         batch_size: int = 10,
+        patch_size: Union[int, Sequence[int]] = 96,
         contrastive_mode: Literal["regular", "modality_pairs"] = "modality_pairs",
+        seed: int = 42,
     ):
         super().__init__()
         self.data_dir = data_dir
         self.train_transforms = train_transforms
         self.val_transforms = val_transforms
         self.batch_size = batch_size
+        self.patch_size = patch_size
         self.contrastive_mode = contrastive_mode
+        self.seed = seed
         self.setup(None)
 
     def setup(self, stage: Optional[str]):
@@ -53,7 +57,7 @@ class ContrastiveDataModule(pl.LightningDataModule):  # type: ignore
         patient_ids = sorted(patient_ids)
 
         train_patients, val_patients = train_test_split(
-            patient_ids, test_size=0.2, random_state=42
+            patient_ids, test_size=0.02, random_state=self.seed
         )
 
         # Contrastive datasets (exclude scan_* files)
@@ -62,12 +66,14 @@ class ContrastiveDataModule(pl.LightningDataModule):  # type: ignore
             patients_included=set(train_patients),
             transforms=self.train_transforms,
             contrastive_mode=cast(Literal["regular", "modality_pairs"], self.contrastive_mode),
+            patch_size=self.patch_size,
         )
         self.val_dataset = ContrastivePatientDataset(
             data_dir=self.data_dir,
             patients_included=set(val_patients),
             transforms=self.val_transforms,
             contrastive_mode=cast(Literal["regular", "modality_pairs"], self.contrastive_mode),
+            patch_size=self.patch_size,
         )
 
     def train_dataloader(self):

@@ -7,10 +7,14 @@ __all__ = [
     "swap_in_to_gn",
 ]
 
+from typing import TYPE_CHECKING
 import math
 
 import torch
 import torch.nn as nn
+
+if TYPE_CHECKING:
+    import torch.optim as optim
 
 def _trunc_normal_(tensor: torch.Tensor, mean: float = 0., std: float = 1.,
                    a: float = -2., b: float = 2.) -> torch.Tensor:
@@ -103,3 +107,22 @@ def swap_in_to_gn(module: nn.Module, groups: int = 8) -> None:
             setattr(module, name, gn)
         else:
             swap_in_to_gn(child, groups)
+
+def get_optimizer_lr(optimizers: list[optim.Optimizer]) -> dict[str, float]:
+    """Get optimizer learning rates."""
+    return {
+        f"train/lr/opt{i}_group{j}": group["lr"]
+        for i, opt in enumerate(optimizers)
+        for j, group in enumerate(opt.param_groups)
+    }
+
+def get_total_grad_norm(model: nn.Module) -> torch.Tensor:
+    """Get total gradient norm."""
+    total_norm = torch.norm(
+        torch.stack([
+            p.grad.detach().norm(2)
+            for p in model.parameters()
+            if p.grad is not None
+        ]), p=2,
+    )
+    return total_norm

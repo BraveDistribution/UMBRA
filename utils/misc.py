@@ -73,3 +73,23 @@ def schedule_param(
         return start_val
     else:
         raise ValueError(f"Unknown mode '{mode}'")
+
+def sync_dist_safe(obj) -> bool:
+    """
+    Return True if the attached Trainer is in DDP/FSDP mode (world_size > 1).
+
+    Works for LightningModule, Callback, or anything else that has a .trainer.
+    Falls back to False if we cannot decide.
+    """
+    try:
+        trainer = getattr(obj, "trainer", None)
+    except RuntimeError:
+        return False
+    
+    if trainer is None:
+        return False
+
+    try:
+        return getattr(trainer, "world_size", 1) > 1
+    except AttributeError:
+        return False

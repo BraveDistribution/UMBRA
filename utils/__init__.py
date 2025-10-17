@@ -12,3 +12,4 @@ from utils.misc import *
 from utils.io import *
 from utils.spatial import *
 from utils.nets import *
+from utils.metrics import *

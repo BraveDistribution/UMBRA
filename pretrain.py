@@ -13,6 +13,7 @@ from data.contrastive_datamodule import ContrastiveDataModule
 from data.mae_datamodule import MAEDataModule
 from models.foundation import ContrastiveMAEPretrainer, MAEPretrainer
 from transforms.composed import get_mae_transforms, get_contrastive_transforms
+from callbacks.monitor import LogLR, LogGradNorm
 
 
 def _create_data_module(
@@ -24,7 +25,9 @@ def _create_data_module(
     contrastive_val_transforms: Optional[Callable],
     contrastive_mode: Literal["regular", "modality_pairs"],
     batch_size: int,
+    patch_size: Sequence[int],
     mae_batch_size: Optional[int],
+    seed: int,
 ) -> Union[MAEDataModule, ContrastiveDataModule, CombinedDataModule]:
     """Create appropriate data module based on pretraining mode.
 
@@ -50,7 +53,9 @@ def _create_data_module(
             data_dir=data_dir, 
             train_transforms=mae_train_transforms, 
             val_transforms=mae_val_transforms, 
-            batch_size=batch_size
+            batch_size=batch_size,
+            patch_size=patch_size,
+            seed=seed,
         )
     elif pretraining_mode == "contrastive_only":
         return ContrastiveDataModule(
@@ -59,6 +64,8 @@ def _create_data_module(
             val_transforms=contrastive_val_transforms, 
             batch_size=batch_size,
             contrastive_mode=contrastive_mode,
+            patch_size=patch_size,
+            seed=seed,
         )
     elif pretraining_mode == "combined":
         return CombinedDataModule(
@@ -70,6 +77,8 @@ def _create_data_module(
             mae_val_transforms=mae_val_transforms,  # For MAE single volumes (volume key)
             batch_size=batch_size,
             mae_batch_size=mae_batch_size,
+            patch_size=patch_size,
+            seed=seed,
         )
     else:
         raise ValueError(
@@ -133,7 +142,28 @@ def train(
     contrastive_mode: Literal["regular", "modality_pairs"] = "modality_pairs",
     mae_batch_size: Optional[int] = None,
     num_checkpoints: int = 20,
+    fast_dev_run: Union[bool, int] = False,
+    seed: int = 42,
 ) -> None:
+    """
+    Args:
+        data_dir:                 Directory containing training data
+        model_checkpoint_dir:     Directory to save model checkpoints
+        epochs:                   Maximum number of epochs to train
+        steps:                    Maximum number of steps to train
+        patch_size:               Input patch size for the model
+        batch_size:               Batch size for training
+        learning_rate:            Maximum learning rate for training
+        accumulate_grad_batches:  Number of gradient accumulation steps
+        experiment_name:          Name of the experiment
+        resume_from_checkpoint:   Optional path to checkpoint to resume from
+        pretraining_mode:         Mode to use for pretraining (mae_only, contrastive_only, combined)
+        contrastive_mode:         Mode to use for contrastive learning (regular, modality_pairs)
+        mae_batch_size:           Optional separate batch size for MAE in combined mode
+        num_checkpoints:          Number of intermediate checkpoints to save per training run
+        fast_dev_run:             Quick debugging run
+        seed:                     Random seed for reproducibility
+    """
     save_dir: Union[str, Path] = Path(model_checkpoint_dir) / experiment_name
 
     # Early failure
@@ -143,6 +173,9 @@ def train(
     max_epochs = epochs if (steps is None) else None
     max_steps = steps or -1
     
+    # Set random seed
+    pl.seed_everything(seed)
+
     # Define transforms based on pretraining mode
     # MAE-only transforms (single volume key)
     mae_train_transforms = get_mae_transforms(
@@ -190,6 +223,8 @@ def train(
         contrastive_mode=contrastive_mode,
         batch_size=batch_size,
         mae_batch_size=mae_batch_size,
+        patch_size=patch_size,
+        seed=seed,
     )
 
     # Create or load model based on pretraining mode
@@ -210,7 +245,7 @@ def train(
     trainer = pl.Trainer(
         accelerator="gpu",
         logger=wandb_logger,
-        callbacks=[checkpoint_callback],
+        callbacks=[checkpoint_callback, LogLR(), LogGradNorm()],
         precision="bf16-mixed",
         accumulate_grad_batches=accumulate_grad_batches,
         max_epochs=max_epochs,
@@ -219,6 +254,7 @@ def train(
         gradient_clip_val=1,
         gradient_clip_algorithm="norm",
         strategy=DDPStrategy(find_unused_parameters=True),
+        fast_dev_run=fast_dev_run,
     )
 
     if resume_from_checkpoint:

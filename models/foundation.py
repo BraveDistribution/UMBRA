@@ -30,6 +30,7 @@ import torch.nn.functional as F
 from models.networks import SwinMAE
 from utils.masking import generate_random_mask_conv, up_to_voxel_space
 from utils.misc import ensure_tuple_dim, schedule_param
+from utils.metrics import effective_rank
 
 
 class MAEPretrainer(pl.LightningModule):  # type: ignore
@@ -705,6 +706,7 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
                 f"{prefix}/contrastive_loss": contrastive_loss,
                 f"{prefix}/mae_loss": mae_loss,
                 f"{prefix}/loss_weight": alpha,
+                f"{prefix}/effective_rank": effective_rank(self.queue, method="auto")[0],
             },
             prog_bar=True,
             on_step=True,
