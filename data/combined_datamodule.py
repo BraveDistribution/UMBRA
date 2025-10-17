@@ -12,7 +12,7 @@ except ImportError:
 from sklearn.model_selection import train_test_split
 from data.contrastive_dataset import ContrastivePatientDataset
 from data.mae_dataset import MAEDataset
-from torch.utils.data import DataLoader
+from monai.data.dataloader import DataLoader
 
 
 class CombinedDataModule(pl.LightningDataModule):  # type: ignore

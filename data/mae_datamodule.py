@@ -6,7 +6,7 @@ import lightning.pytorch as pl
 from sklearn.model_selection import train_test_split
 
 from data.mae_dataset import MAEDataset
-from torch.utils.data import DataLoader
+from monai.data.dataloader import DataLoader
 
 
 class MAEDataModule(pl.LightningDataModule):  # type: ignore

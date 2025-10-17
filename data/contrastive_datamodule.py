@@ -12,7 +12,7 @@ except ImportError:
     EVAL_DATALOADERS = None  # type: ignore
 from sklearn.model_selection import train_test_split
 from data.contrastive_dataset import ContrastivePatientDataset
-from torch.utils.data import DataLoader
+from monai.data.dataloader import DataLoader
 
 
 class ContrastiveDataModule(pl.LightningDataModule):  # type: ignore

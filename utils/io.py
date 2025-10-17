@@ -24,14 +24,16 @@ except ImportError:
             return pickle.load(f)
 
 def load_volume(path: str) -> NDArray[np.float32]:
-        vol: NDArray[Any]
-        try:
-            vol = np.load(path, "r")
-        except ValueError:
-            vol = np.load(path, allow_pickle=True)
-        if len(vol.shape) == 3:
-            vol = vol[np.newaxis, ...]
-        return vol
+    """Load a volume from a .npy file."""
+    vol: NDArray[Any] = np.load(path, allow_pickle=True)
+    if vol.ndim == 3:
+        vol = vol[np.newaxis, ...] # (1,H,W,D)
+    # ensure writable, correct dtype
+    if not vol.flags.writeable:
+        vol = np.array(vol, dtype=np.float32, copy=True)
+    else:
+        vol = vol.astype(np.float32, copy=False)
+    return vol
 
 def load_volume_and_header(file: str) -> tuple[NDArray[np.float32], Any]:
     vol: NDArray[np.float32] = load_volume(file)
