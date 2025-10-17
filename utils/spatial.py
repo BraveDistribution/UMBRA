@@ -7,7 +7,7 @@ __all__ = [
     "shared_random_crop",
 ]
 
-from typing import Tuple, Sequence
+from typing import Tuple, Sequence, Union
 
 import numpy as np
 from numpy.typing import NDArray
@@ -113,7 +113,7 @@ def upsample_to_3d(
         x, size=ref.shape[-3:], mode=mode, align_corners=False
     )
 
-def voxel_shuffle_3d(x: torch.Tensor, r: Sequence[int] | int) -> torch.Tensor:
+def voxel_shuffle_3d(x: torch.Tensor, r: Union[Sequence[int], int]) -> torch.Tensor:
     """
     Voxel shuffle operation for 3D tensors.
 
@@ -128,10 +128,10 @@ def voxel_shuffle_3d(x: torch.Tensor, r: Sequence[int] | int) -> torch.Tensor:
         Output tensor of shape (B, C, D*r1, H*r2, W*r3)
     """
     # x: (B, C*r1*r2*r3, D, H, W) -> (B, C, D*r1, H*r2, W*r3)
-    B, Cr3, D, H, W = x.shape
+    B, C_r1_r2_r3, D, H, W = x.shape
     r1, r2, r3 = ensure_tuple_dim(r, 3)
-    assert Cr3 % r3 == 0, "Channel dim must be divisible by up1*up2*up3"
-    C = Cr3 // r3
+    assert C_r1_r2_r3 % r1 * r2 * r3 == 0, "Channel dim must be divisible by up1*up2*up3"
+    C = C_r1_r2_r3 // r1 * r2 * r3
     x = x.view(B, C, r1, r2, r3, D, H, W)
     x = x.permute(0, 1, 5, 2, 6, 3, 7, 4).contiguous()
     return x.view(B, C, D * r1, H * r2, W * r3)
