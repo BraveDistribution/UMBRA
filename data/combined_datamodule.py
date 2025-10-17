@@ -1,5 +1,5 @@
-from typing import Callable, Optional, Union
-
+from typing import Callable, Optional, Union, Literal
+from typing import cast
 from pathlib import Path
 
 try:
@@ -37,11 +37,13 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
         mae_val_transforms: Optional[Callable] = None,
         contrastive_train_transforms: Optional[Callable] = None,
         contrastive_val_transforms: Optional[Callable] = None,
+        contrastive_mode: Literal["regular", "modality_pairs"] = "modality_pairs",
     ):
         super().__init__()
         self.data_dir = data_dir
         self.contrastive_train_transforms = contrastive_train_transforms  # Contrastive transforms (vol1, vol2 keys)
         self.contrastive_val_transforms = contrastive_val_transforms  # Contrastive transforms (vol1, vol2 keys)
+        self.contrastive_mode = contrastive_mode
         self.mae_train_transforms = mae_train_transforms  # MAE transforms (volume key)
         self.mae_val_transforms = mae_val_transforms  # MAE transforms (volume key)
         self.batch_size = batch_size
@@ -73,11 +75,13 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
             data_dir=self.data_dir,
             patients_included=set(train_patients),
             transforms=self.contrastive_train_transforms,
+            contrastive_mode=cast(Literal["regular", "modality_pairs"], self.contrastive_mode),
         )
         self.contrastive_val_dataset = ContrastivePatientDataset(
             data_dir=self.data_dir,
             patients_included=set(val_patients),
             transforms=self.contrastive_val_transforms,
+            contrastive_mode=cast(Literal["regular", "modality_pairs"], self.contrastive_mode),
         )
 
         # MAE datasets (exclude files that are in contrastive pairs)

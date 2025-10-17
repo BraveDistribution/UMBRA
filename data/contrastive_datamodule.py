@@ -1,4 +1,5 @@
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Union, Literal
+from typing import cast
 
 from pathlib import Path
 
@@ -27,12 +28,14 @@ class ContrastiveDataModule(pl.LightningDataModule):  # type: ignore
         train_transforms: Optional[Callable] = None,
         val_transforms: Optional[Callable] = None,
         batch_size: int = 10,
+        contrastive_mode: Literal["regular", "modality_pairs"] = "modality_pairs",
     ):
         super().__init__()
         self.data_dir = data_dir
         self.train_transforms = train_transforms
         self.val_transforms = val_transforms
         self.batch_size = batch_size
+        self.contrastive_mode = contrastive_mode
         self.setup(None)
 
     def setup(self, stage: Optional[str]):
@@ -58,11 +61,13 @@ class ContrastiveDataModule(pl.LightningDataModule):  # type: ignore
             data_dir=self.data_dir,
             patients_included=set(train_patients),
             transforms=self.train_transforms,
+            contrastive_mode=cast(Literal["regular", "modality_pairs"], self.contrastive_mode),
         )
         self.val_dataset = ContrastivePatientDataset(
             data_dir=self.data_dir,
             patients_included=set(val_patients),
             transforms=self.val_transforms,
+            contrastive_mode=cast(Literal["regular", "modality_pairs"], self.contrastive_mode),
         )
 
     def train_dataloader(self):

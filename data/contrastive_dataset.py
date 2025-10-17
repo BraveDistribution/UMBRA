@@ -4,7 +4,7 @@ import random
 import re
 from itertools import combinations
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, Sequence
+from typing import Any, Callable, Dict, List, Optional, Set, Literal, Union, Sequence
 
 import numpy as np
 from numpy.typing import NDArray
@@ -28,6 +28,7 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
             Callable[[Dict[str, NDArray[np.float32]]], Dict[str, NDArray[np.float32]]]
         ] = None,
         patch_size: Union[int, Sequence[int]] = 96,
+        contrastive_mode: Literal["regular", "modality_pairs"] = "modality_pairs",
     ) -> None:
         """
         Args:
@@ -35,6 +36,9 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
             patients_included: Set of patient IDs to include
             transforms: Transforms to apply to the data
             patch_size: Patch size to use for random crop
+            contrastive_mode: Mode to use for contrastive learning:
+             - "regular": Augmented views for positive pairs.
+             - "modality_pairs": Use different modalities as positive pairs.
         """
         self.data_dir: Union[str, Path] = data_dir
         self.transforms: Optional[
@@ -42,6 +46,7 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
         ] = transforms
         self.patch_size = ensure_tuple_dim(patch_size, 3)
         self.patients_included: Set[str] = patients_included
+        self.contrastive_mode: Literal["regular", "modality_pairs"] = contrastive_mode
         self.patients_sessions: Dict[str, Dict[str, List[str]]] = {}
         self.pairs: List[Dict[str, str]] = []
         self.populate_paths()
@@ -100,16 +105,28 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
         self.pairs = []
         for patient, sessions in self.patients_sessions.items():
             for session, paths in sessions.items():
+                # Same inclusion criteria to ensure fair comparison between methods
                 if len(paths) >= 2:
-                    for path1, path2 in combinations(paths, 2):
-                        self.pairs.append(
-                            {
-                                "path1": path1,
-                                "path2": path2,
-                                "patient": patient,
-                                "session": session,
-                            }
-                        )
+                    if self.contrastive_mode == "modality_pairs":
+                        for path1, path2 in combinations(paths, 2):
+                            self.pairs.append(
+                                {
+                                    "path1": path1,
+                                    "path2": path2,
+                                    "patient": patient,
+                                    "session": session,
+                                }
+                            )
+                    else:
+                        for path in paths:
+                            self.pairs.append(
+                                {
+                                    "path1": path,
+                                    "path2": path,
+                                    "patient": patient,
+                                    "session": session,
+                                }
+                            )
 
     def __len__(self) -> int:
         return len(self.pairs)

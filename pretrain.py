@@ -22,6 +22,7 @@ def _create_data_module(
     mae_val_transforms: Optional[Callable],
     contrastive_train_transforms: Optional[Callable],
     contrastive_val_transforms: Optional[Callable],
+    contrastive_mode: Literal["regular", "modality_pairs"],
     batch_size: int,
     mae_batch_size: Optional[int],
 ) -> Union[MAEDataModule, ContrastiveDataModule, CombinedDataModule]:
@@ -34,6 +35,7 @@ def _create_data_module(
         mae_val_transforms: Transforms for MAE validation
         contrastive_train_transforms: Transforms for contrastive learning training
         contrastive_val_transforms: Transforms for contrastive learning validation
+        contrastive_mode: Mode to use for contrastive learning
         batch_size: Batch size for training
         mae_batch_size: Optional separate batch size for MAE in combined mode
 
@@ -55,13 +57,15 @@ def _create_data_module(
             data_dir=data_dir, 
             train_transforms=contrastive_train_transforms, 
             val_transforms=contrastive_val_transforms, 
-            batch_size=batch_size
+            batch_size=batch_size,
+            contrastive_mode=contrastive_mode,
         )
     elif pretraining_mode == "combined":
         return CombinedDataModule(
             data_dir=data_dir,
             contrastive_train_transforms=contrastive_train_transforms,  # For contrastive pairs (vol1, vol2)
             contrastive_val_transforms=contrastive_val_transforms,  # For contrastive pairs (vol1, vol2)
+            contrastive_mode=contrastive_mode,
             mae_train_transforms=mae_train_transforms,  # For MAE single volumes (volume key)
             mae_val_transforms=mae_val_transforms,  # For MAE single volumes (volume key)
             batch_size=batch_size,
@@ -126,6 +130,7 @@ def train(
     experiment_name: str = "default_experiment",
     resume_from_checkpoint: Optional[Union[str, Path]] = None,
     pretraining_mode: Literal["mae_only", "contrastive_only", "combined"] = "contrastive_only",
+    contrastive_mode: Literal["regular", "modality_pairs"] = "modality_pairs",
     mae_batch_size: Optional[int] = None,
     num_checkpoints: int = 20,
 ) -> None:
@@ -182,6 +187,7 @@ def train(
         mae_val_transforms=mae_val_transforms,
         contrastive_train_transforms=contrastive_train_transforms,
         contrastive_val_transforms=contrastive_val_transforms,
+        contrastive_mode=contrastive_mode,
         batch_size=batch_size,
         mae_batch_size=mae_batch_size,
     )

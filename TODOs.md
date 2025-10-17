@@ -30,7 +30,6 @@ I recommend modifying only the transforms for this project. But in the future th
    
 3. Models:
    - Contrastive: Queue size: small (4096), can do larger one (16384) given that contrastive is taking all combinations of modalities in each epoch. 
-   - Contrastive: Do you need to compute the loss for view1-view2 and then view2-view1, given that you generate all modality combinations (I assume this distinguishes 1-2 from 2-1) as training points? 
    - Combined: Since contrastive loss is not truly informative in the first epochs, I would recommend that training is dominated by the MAE loss. It should be scheduled, and gradually increased to 50-50.
 
 4. Testing:
