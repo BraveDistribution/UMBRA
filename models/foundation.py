@@ -631,8 +631,6 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
 
         view1: torch.Tensor = batch["vol1"]
         view2: torch.Tensor = batch["vol2"]
-        target1: torch.Tensor = batch["vol1_recon"]
-        target2: torch.Tensor = batch["vol2_recon"]
 
         # Extract patient and session metadata
         patient_ids: torch.Tensor = batch["patient"]
@@ -648,6 +646,9 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
 
         # MAE loss on both views (only in combined mode)
         if self.pretraining_mode == "combined":
+            target1: torch.Tensor = batch["vol1_recon"]
+            target2: torch.Tensor = batch["vol2_recon"]
+            
             recon1, mask1 = self.forward_mae(view1)
             recon2, mask2 = self.forward_mae(view2)
             loss_view1 = F.mse_loss(recon1[mask1], target1[mask1])
