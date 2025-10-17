@@ -328,7 +328,6 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
             "start_val": 0.996,
             "end_val": 0.999,
             "mode": "linear",
-            "clamp": True,
         },
         # Combined mode args
         combined_kwargs: Union[Dict[str, Any], float] = {
@@ -337,7 +336,6 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
             "start_val": 0.05,
             "end_val": 1.0,
             "mode": "linear",
-            "clamp": True,
         },
         # Optimizer args
         learning_rate: float = 1e-4,
@@ -648,7 +646,7 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         if self.pretraining_mode == "combined":
             target1: torch.Tensor = batch["vol1_recon"]
             target2: torch.Tensor = batch["vol2_recon"]
-            
+
             recon1, mask1 = self.forward_mae(view1)
             recon2, mask2 = self.forward_mae(view2)
             loss_view1 = F.mse_loss(recon1[mask1], target1[mask1])
