@@ -59,7 +59,7 @@ def get_mae_transforms(
     # Default I/O
     transforms = [
         ToTensord(keys=keys),
-        EnsureChannelFirstd(keys=keys),
+        EnsureChannelFirstd(keys=keys, channel_dim=0),
     ]
 
     # Spatial augmentations
@@ -139,7 +139,7 @@ def get_contrastive_transforms(
     # Default I/O
     transforms = [
         ToTensord(keys=keys),
-        EnsureChannelFirstd(keys=keys),
+        EnsureChannelFirstd(keys=keys, channel_dim=0),
     ]
 
     # Augmentations
