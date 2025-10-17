@@ -11,8 +11,10 @@ except ImportError:
     pl = None  # type: ignore
     EVAL_DATALOADERS = None  # type: ignore
 from sklearn.model_selection import train_test_split
-from data.contrastive_dataset import ContrastivePatientDataset
 from monai.data.dataloader import DataLoader
+from monai.data.utils import pad_list_data_collate
+
+from data.contrastive_dataset import ContrastivePatientDataset
 
 
 class ContrastiveDataModule(pl.LightningDataModule):  # type: ignore
@@ -80,10 +82,18 @@ class ContrastiveDataModule(pl.LightningDataModule):  # type: ignore
 
     def train_dataloader(self):
         return DataLoader(
-            self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=32
+            self.train_dataset, 
+            batch_size=self.batch_size, 
+            shuffle=True, 
+            num_workers=32, 
+            collate_fn=pad_list_data_collate
         )
 
     def val_dataloader(self):
         return DataLoader(
-            self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=32
+            self.val_dataset, 
+            batch_size=self.batch_size, 
+            shuffle=False, 
+            num_workers=32, 
+            collate_fn=pad_list_data_collate,
         )

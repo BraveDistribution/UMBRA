@@ -10,9 +10,11 @@ except ImportError:
     pl = None  # type: ignore
     EVAL_DATALOADERS = None  # type: ignore
 from sklearn.model_selection import train_test_split
+from monai.data.dataloader import DataLoader
+from monai.data.utils import pad_list_data_collate
+
 from data.contrastive_dataset import ContrastivePatientDataset
 from data.mae_dataset import MAEDataset
-from monai.data.dataloader import DataLoader
 
 
 class CombinedDataModule(pl.LightningDataModule):  # type: ignore
@@ -115,6 +117,7 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=32,
+            collate_fn=pad_list_data_collate,
         )
 
         mae_loader = DataLoader(
@@ -122,6 +125,7 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
             batch_size=self.mae_batch_size,
             shuffle=True,
             num_workers=32,
+            collate_fn=pad_list_data_collate,
         )
 
         return [contrastive_loader, mae_loader]
@@ -132,6 +136,7 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=32,
+            collate_fn=pad_list_data_collate,
         )
 
         mae_loader = DataLoader(
@@ -139,6 +144,7 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
             batch_size=self.mae_batch_size,
             shuffle=False,
             num_workers=32,
+            collate_fn=pad_list_data_collate,
         )
 
         return [contrastive_loader, mae_loader]
