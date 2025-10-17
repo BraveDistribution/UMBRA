@@ -9,13 +9,14 @@ __all__ = [
 ]
 
 from typing import Any, Sequence, Literal, Union, Dict, Optional
-from typing import cast, TYPE_CHECKING
+from typing import cast
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from monai.networks.nets.swin_unetr import SwinTransformer
+from monai.networks.blocks.patchembedding import PatchEmbed
 
 from .blocks import (
     FPNDecoderFeaturesOnly, 
@@ -24,9 +25,6 @@ from .blocks import (
 )
 from utils.misc import ensure_tuple_dim
 from utils.nets import swap_in_to_gn
-
-if TYPE_CHECKING:
-    from monai.networks.blocks.patchembedding import PatchEmbed
 
 
 class SwinEncoder(SwinTransformer):
