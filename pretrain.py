@@ -269,6 +269,8 @@ def train(
     else:
         trainer.fit(model, datamodule=data_module)
 
+    print("Training workflow completed.")
+
 
 if __name__ == "__main__":
     Fire(train)
