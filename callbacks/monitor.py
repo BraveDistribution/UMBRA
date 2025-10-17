@@ -47,6 +47,8 @@ class LogLR(pl.Callback):
 class LogGradNorm(pl.Callback):
     """
     Callback to log the gradient norm for all parameters in the model.
+
+    Adapted from https://github.com/MaastrichtU-CDS/anyBrainer.git
     """
     @rank_zero_only
     def on_train_batch_end(
