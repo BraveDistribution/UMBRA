@@ -10,9 +10,10 @@ __all__ = [
 ]
 
 from typing import Callable, Dict, Sequence, Union
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from numpy.typing import NDArray
+from torch import Tensor
 # pyright: reportPrivateImportUsage=false
 from monai.transforms import (
     CenterSpatialCropd,
@@ -35,17 +36,13 @@ from monai.transforms import (
 
 from transforms.unit import (
     GetReconstructionTargetd, 
-    CreateRandomMaskd,
 )
-
-if TYPE_CHECKING:
-    import torch
 
 def get_mae_transforms(
     keys: Sequence[str] = ("volume",),
     input_size: Union[int, Sequence[int]] = 96,
     val_mode: bool = False,
-) -> Callable[[Dict[str, NDArray]], Dict[str, torch.Tensor]]:
+) -> Callable[[Dict[str, NDArray]], Dict[str, Tensor]]:
     """
     Get MAE transforms for training or validation.
 
@@ -116,7 +113,7 @@ def get_mae_transforms(
             CenterSpatialCropd(keys=keys, roi_size=input_size),
         ])
 
-    return cast(Callable[[Dict[str, NDArray]], Dict[str, torch.Tensor]], Compose(transforms))
+    return cast(Callable[[Dict[str, NDArray]], Dict[str, Tensor]], Compose(transforms))
 
 def get_contrastive_transforms(
     keys: Sequence[str] = ("vol1", "vol2"),
@@ -124,7 +121,7 @@ def get_contrastive_transforms(
     conservative_mode: bool = True,
     val_mode: bool = False,
     recon: bool = False,
-) -> Callable[[Dict[str, NDArray]], Dict[str, torch.Tensor]]:
+) -> Callable[[Dict[str, NDArray]], Dict[str, Tensor]]:
     """
     Get contrastive transforms for training or validation.
 
@@ -226,4 +223,4 @@ def get_contrastive_transforms(
         transforms.extend([
             CenterSpatialCropd(keys=keys, roi_size=input_size),
         ])
-    return cast(Callable[[Dict[str, NDArray]], Dict[str, torch.Tensor]], Compose(transforms))
+    return cast(Callable[[Dict[str, NDArray]], Dict[str, Tensor]], Compose(transforms))
