@@ -61,7 +61,7 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
         weight_init_fn: Optional[Callable[[nn.Module], None]] = None,
         # Masking args
         mask_ratio: Union[float, Sequence[float]] = [0.6, 0.75],
-        img_size: Sequence[int] = (96, 96, 96),
+        input_size: Union[int, Sequence[int]] = 96,
         # Optimizer args
         learning_rate: float = 1e-4,
         min_lr: float = 1e-5,
@@ -70,20 +70,20 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
         """
         Args:
             in_channels:        Number of input channels
-            patch_size:         Size of patches for Swin Transformer
-            depths:             Depth of the SwinTransformer
-            num_heads:          Number of attention heads for SwinTransformer
-            window_size:        Size of the window for SwinTransformer
-            feature_size:       Feature size for SwinTransformer
-            use_v2:             Use v2 version of SwinTransformer
+            patch_size:         Patch size for `SwinTransformer`
+            depths:             Depth of the `SwinTransformer`
+            num_heads:          Number of attention heads for `SwinTransformer`
+            window_size:        Size of the window for `SwinTransformer`
+            feature_size:       Feature size for `SwinTransformer`
+            use_v2:             Use v2 version of `SwinTransformer`
             spatial_dims:       Spatial dimensions
-            use_checkpoint:     Use checkpointing for SwinTransformer
-            extra_swin_kwargs:  Extra keyword arguments for SwinTransformer
+            use_checkpoint:     Use checkpointing for `SwinTransformer`
+            extra_swin_kwargs:  Extra keyword arguments for `SwinTransformer`
             gn_groups:          Number of groups for GroupNorm
             width:              Width of the FPN decoder
             weight_init_fn:     Function to initialize weights
             mask_ratio:         Ratio of volume to mask for MAE
-            img_size:           Input image dimensions
+            input_size:         Model input size
             learning_rate:      Initial learning rate
             min_lr:             Minimum learning rate for cosine annealing
             warmup:             Number of warmup steps if int, or fraction of total steps if float
@@ -96,9 +96,9 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
         self.min_lr: float = min_lr
         self.learning_rate: float = learning_rate
         self.mask_ratio: Sequence[float] = ensure_tuple_dim(mask_ratio, 2)
-        self.img_size: Sequence[int] = ensure_tuple_dim(img_size, 3)
+        self.patch_size: Sequence[int] = ensure_tuple_dim(patch_size, spatial_dims)
         self.num_downsamples: int = len(depths)
-        self.patch_size: Sequence[int] = ensure_tuple_dim(patch_size, 3)
+        self.input_size: Sequence[int] = ensure_tuple_dim(input_size, spatial_dims)
 
         # Type hints for PyTorch Lightning attributes
         self.trainer: Optional[Any]
@@ -132,7 +132,7 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
 
     def forward_mae(
         self, x: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Masked autoencoding forward pass.
 
@@ -140,13 +140,11 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
             x: Input tensor
 
         Returns:
-            Tuple of (reconstruction, mask, original)
+            Tuple of (recon, mask)
         """
-        original: torch.Tensor = x.clone()
-
         # Generate mask at patch level
         mask_patch: torch.Tensor = generate_random_mask_conv(
-            x_spatial=self.img_size,
+            input_size=self.input_size,
             patch_size=self.patch_size,
             num_downsamples=self.num_downsamples,
             batch_size=x.shape[0],
@@ -159,11 +157,11 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
         # Upsample mask to voxel level for reconstruction loss
         mask_voxel: torch.Tensor = up_to_voxel_space(
             mask_finest_grid=mask_patch,
-            original_spatial=self.img_size,
+            original_spatial=self.input_size,
             patch_size=self.patch_size,
         )
 
-        return pred, mask_voxel, original
+        return pred, mask_voxel
 
     def training_step(
         self, batch: Dict[str, torch.Tensor], batch_idx: int
@@ -179,13 +177,13 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
             MAE loss
         """
         volume: torch.Tensor = batch["volume"]
+        target: torch.Tensor = batch["volume_recon"]
 
         # MAE loss
         recon: torch.Tensor
         mask: torch.Tensor
-        original: torch.Tensor
-        recon, mask, original = self.forward_mae(volume)
-        mae_loss: torch.Tensor = F.mse_loss(recon[mask], original[mask])
+        recon, mask = self.forward_mae(volume)
+        mae_loss: torch.Tensor = F.mse_loss(recon[mask], target[mask])
 
         # Logging
         self.log_dict(
@@ -215,13 +213,13 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
             MAE loss
         """
         volume: torch.Tensor = batch["volume"]
+        target: torch.Tensor = batch["volume_recon"]
 
         # MAE loss
         recon: torch.Tensor
         mask: torch.Tensor
-        original: torch.Tensor
-        recon, mask, original = self.forward_mae(volume)
-        mae_loss: torch.Tensor = F.mse_loss(recon[mask], original[mask])
+        recon, mask = self.forward_mae(volume)
+        mae_loss: torch.Tensor = F.mse_loss(recon[mask], target[mask])
 
         # Logging
         self.log_dict(
@@ -320,7 +318,7 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         weight_init_fn: Optional[Callable[[nn.Module], None]] = None,
         # Masking args
         mask_ratio: Union[float, Sequence[float]] = [0.6, 0.75],
-        img_size: Sequence[int] = (96, 96, 96),
+        input_size: Union[int, Sequence[int]] = 96,
         # Contrastive learning args
         temperature: float = 0.1,
         queue_size: int = 16384,
@@ -351,7 +349,7 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         """
         Args:
             in_channels:        Number of input channels
-            patch_size:         Size of patches for Swin Transformer
+            patch_size:         Patch size for `SwinTransformer`
             depths:             Depth of the SwinTransformer
             num_heads:          Number of attention heads for SwinTransformer
             window_size:        Size of the window for SwinTransformer
@@ -362,7 +360,7 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
             extra_swin_kwargs:  Extra keyword arguments for SwinTransformer
             weight_init_fn:     Function to initialize weights
             mask_ratio:         Ratio of volume to mask for MAE
-            img_size:           Input image dimensions
+            input_size:         Model input size
             temperature:        Temperature parameter for contrastive loss
             queue_size:         Size of negative sample queue for MoCo
             momentum_kwargs:    Keyword arguments for scheduling momentum coefficient using the 
@@ -395,7 +393,8 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
             spatial_dims=spatial_dims,
             use_checkpoint=use_checkpoint,
             extra_swin_kwargs=extra_swin_kwargs,
-            img_size=img_size,
+            weight_init_fn=weight_init_fn,
+            input_size=input_size,
             mask_ratio=mask_ratio,
             learning_rate=learning_rate,
             min_lr=min_lr,
@@ -632,6 +631,8 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
 
         view1: torch.Tensor = batch["vol1"]
         view2: torch.Tensor = batch["vol2"]
+        target1: torch.Tensor = batch["vol1_recon"]
+        target2: torch.Tensor = batch["vol2_recon"]
 
         # Extract patient and session metadata
         patient_ids: torch.Tensor = batch["patient"]
@@ -647,10 +648,10 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
 
         # MAE loss on both views (only in combined mode)
         if self.pretraining_mode == "combined":
-            recon1, mask1, original1 = self.forward_mae(view1)
-            recon2, mask2, original2 = self.forward_mae(view2)
-            loss_view1 = F.mse_loss(recon1[mask1], original1[mask1])
-            loss_view2 = F.mse_loss(recon2[mask2], original2[mask2])
+            recon1, mask1 = self.forward_mae(view1)
+            recon2, mask2 = self.forward_mae(view2)
+            loss_view1 = F.mse_loss(recon1[mask1], target1[mask1])
+            loss_view2 = F.mse_loss(recon2[mask2], target2[mask2])
             mae_loss = 0.5 * (loss_view1 + loss_view2)
         else:
             mae_loss = torch.tensor(0.0, device=view1.device)
@@ -721,10 +722,11 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
     ) -> torch.Tensor:
         """Process an MAE batch and return the loss."""
         volume: torch.Tensor = batch["volume"]
+        target: torch.Tensor = batch["volume_recon"]
 
         # MAE loss only
-        recon, mask, original = self.forward_mae(volume)
-        mae_loss = F.mse_loss(recon[mask], original[mask])
+        recon, mask = self.forward_mae(volume)
+        mae_loss = F.mse_loss(recon[mask], target[mask])
 
         # Logging
         prefix = "train" if is_training else "val"

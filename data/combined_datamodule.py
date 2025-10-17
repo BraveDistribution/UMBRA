@@ -32,7 +32,7 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
         self,
         data_dir: Union[str, Path],
         batch_size: int = 10,
-        patch_size: Union[int, Sequence[int]] = 96,
+        input_size: Union[int, Sequence[int]] = 96,
         mae_batch_size: Optional[int] = None,
         mae_train_transforms: Optional[Callable] = None,
         mae_val_transforms: Optional[Callable] = None,
@@ -49,7 +49,7 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
         self.mae_train_transforms = mae_train_transforms  # MAE transforms (volume key)
         self.mae_val_transforms = mae_val_transforms  # MAE transforms (volume key)
         self.batch_size = batch_size
-        self.patch_size = patch_size
+        self.input_size = input_size
         self.mae_batch_size = (
             mae_batch_size if mae_batch_size is not None else batch_size
         )
@@ -80,14 +80,14 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
             patients_included=set(train_patients),
             transforms=self.contrastive_train_transforms,
             contrastive_mode=cast(Literal["regular", "modality_pairs"], self.contrastive_mode),
-            patch_size=self.patch_size,
+            input_size=self.input_size,
         )
         self.contrastive_val_dataset = ContrastivePatientDataset(
             data_dir=self.data_dir,
             patients_included=set(val_patients),
             transforms=self.contrastive_val_transforms,
             contrastive_mode=cast(Literal["regular", "modality_pairs"], self.contrastive_mode),
-            patch_size=self.patch_size,
+            input_size=self.input_size,
         )
 
         # MAE datasets (exclude files that are in contrastive pairs)
@@ -97,14 +97,14 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
             patients_included=set(train_patients),
             transforms=self.mae_train_transforms,  # Use MAE-specific transforms
             exclude_contrastive_pairs=True,
-            patch_size=self.patch_size,
+            input_size=self.input_size,
         )
         self.mae_val_dataset = MAEDataset(
             data_dir=self.data_dir,
             patients_included=set(val_patients),
             transforms=self.mae_val_transforms,  # Use MAE-specific transforms
             exclude_contrastive_pairs=True,
-            patch_size=self.patch_size,
+            input_size=self.input_size,
         )
 
     def train_dataloader(self):

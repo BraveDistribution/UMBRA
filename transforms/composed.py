@@ -43,17 +43,17 @@ if TYPE_CHECKING:
 
 def get_mae_transforms(
     keys: Sequence[str] = ("volume",),
-    patch_size: Union[int, Sequence[int]] = 96,
+    input_size: Union[int, Sequence[int]] = 96,
     val_mode: bool = False,
 ) -> Callable[[Dict[str, NDArray]], Dict[str, torch.Tensor]]:
     """
     Get MAE transforms for training or validation.
 
-    Saves reconstruction target as `recon` key. 
+    Saves reconstruction target as `keys[0]_recon` key. 
 
     Args:
         keys: Keys to apply the transforms to.
-        patch_size: Target size of returned tensors.
+        input_size: Target size of returned tensors.
         val_mode: Whether to use validation mode.
 
     Returns:
@@ -77,7 +77,7 @@ def get_mae_transforms(
 
     # Get reconstruction target
     transforms.extend([
-        GetReconstructionTargetd(keys=keys, recon_key="recon"),
+        GetReconstructionTargetd(keys=keys, recon_key=f"{keys[0]}_recon"),
     ])
 
     # Intensity augmentations
@@ -105,34 +105,36 @@ def get_mae_transforms(
     
     # Get patch size
     transforms.extend([
-        SpatialPadd(keys=keys, spatial_size=patch_size),
+        SpatialPadd(keys=keys, spatial_size=input_size),
     ])
     if not val_mode:
         transforms.extend([
-            RandSpatialCropd(keys=keys, roi_size=patch_size),
+            RandSpatialCropd(keys=keys, roi_size=input_size),
         ])
     else:
         transforms.extend([
-            CenterSpatialCropd(keys=keys, roi_size=patch_size),
+            CenterSpatialCropd(keys=keys, roi_size=input_size),
         ])
 
     return cast(Callable[[Dict[str, NDArray]], Dict[str, torch.Tensor]], Compose(transforms))
 
 def get_contrastive_transforms(
     keys: Sequence[str] = ("vol1", "vol2"),
-    patch_size: Union[int, Sequence[int]] = 96,
+    input_size: Union[int, Sequence[int]] = 96,
     conservative_mode: bool = True,
     val_mode: bool = False,
+    recon: bool = False,
 ) -> Callable[[Dict[str, NDArray]], Dict[str, torch.Tensor]]:
     """
     Get contrastive transforms for training or validation.
 
     Args:
         keys: Keys to apply the transforms to.
-        patch_size: Target size of returned tensors.
+        input_size: Target size of returned tensors.
         conservative_mode: Whether to apply same spatial augmentations  and cropping 
             to both volumes. If False, each volume is augmented and cropped independently.
         val_mode: Whether to use validation mode.
+        recon: Whether to save reconstruction target as `keys[0]_recon` and `keys[1]_recon` keys.
 
     Returns:
         Compose object with the transforms.
@@ -165,6 +167,12 @@ def get_contrastive_transforms(
                         scale_range=(0.1, 0.1, 0.1), shear_range=(0.3, 0.3, 0.3),
                         mode='bilinear', padding_mode='border', prob=1.0),
         ])
+
+        if recon:
+            transforms.extend([
+                GetReconstructionTargetd(keys=keys[0], recon_key=f"{keys[0]}_recon"),
+                GetReconstructionTargetd(keys=keys[1], recon_key=f"{keys[1]}_recon"),
+            ])
 
         # Intensity
         transforms.extend([
@@ -202,20 +210,20 @@ def get_contrastive_transforms(
     
     # Get patch size
     transforms.extend([
-        SpatialPadd(keys=keys, spatial_size=patch_size),
+        SpatialPadd(keys=keys, spatial_size=input_size),
     ])
     if not val_mode:
         if conservative_mode:
             transforms.extend([
-                RandSpatialCropd(keys=keys, roi_size=patch_size),
+                RandSpatialCropd(keys=keys, roi_size=input_size),
             ])
         else:
             transforms.extend([
-                RandSpatialCropd(keys=keys[0], roi_size=patch_size),
-                RandSpatialCropd(keys=keys[1], roi_size=patch_size),
+                RandSpatialCropd(keys=keys[0], roi_size=input_size),
+                RandSpatialCropd(keys=keys[1], roi_size=input_size),
             ])
     else:
         transforms.extend([
-            CenterSpatialCropd(keys=keys, roi_size=patch_size),
+            CenterSpatialCropd(keys=keys, roi_size=input_size),
         ])
     return cast(Callable[[Dict[str, NDArray]], Dict[str, torch.Tensor]], Compose(transforms))

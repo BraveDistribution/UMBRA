@@ -27,7 +27,7 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
         transforms: Optional[
             Callable[[Dict[str, NDArray[np.float32]]], Dict[str, NDArray[np.float32]]]
         ] = None,
-        patch_size: Union[int, Sequence[int]] = 96,
+        input_size: Union[int, Sequence[int]] = 96,
         contrastive_mode: Literal["regular", "modality_pairs"] = "modality_pairs",
     ) -> None:
         """
@@ -35,7 +35,7 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
             data_dir: Path to the data directory
             patients_included: Set of patient IDs to include
             transforms: Transforms to apply to the data
-            patch_size: Patch size to use for random crop
+            input_size: Input size to use for random crop
             contrastive_mode: Mode to use for contrastive learning:
              - "regular": Augmented views for positive pairs.
              - "modality_pairs": Use different modalities as positive pairs.
@@ -44,7 +44,7 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
         self.transforms: Optional[
             Callable[[Dict[str, NDArray[np.float32]]], Dict[str, NDArray[np.float32]]]
         ] = transforms
-        self.patch_size = ensure_tuple_dim(patch_size, 3)
+        self.input_size = ensure_tuple_dim(input_size, 3)
         self.patients_included: Set[str] = patients_included
         self.contrastive_mode: Literal["regular", "modality_pairs"] = contrastive_mode
         self.patients_sessions: Dict[str, Dict[str, List[str]]] = {}
@@ -154,7 +154,7 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
             # Default transforms
             from utils.spatial import shared_random_crop
             data_dict["vol1"], data_dict["vol2"] = (
-                shared_random_crop(vol1, vol2, self.patch_size)
+                shared_random_crop(vol1, vol2, self.input_size)
             )
 
         return data_dict

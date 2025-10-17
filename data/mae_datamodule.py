@@ -22,7 +22,7 @@ class MAEDataModule(pl.LightningDataModule):  # type: ignore
         train_transforms: Optional[Callable] = None,
         val_transforms: Optional[Callable] = None,
         batch_size: int = 10,
-        patch_size: Union[int, Sequence[int]] = 96,
+        input_size: Union[int, Sequence[int]] = 96,
         seed: int = 42,
     ):
         super().__init__()
@@ -30,7 +30,7 @@ class MAEDataModule(pl.LightningDataModule):  # type: ignore
         self.train_transforms = train_transforms
         self.val_transforms = val_transforms
         self.batch_size = batch_size
-        self.patch_size = patch_size
+        self.input_size = input_size
         self.seed = seed
         self.setup(None)
 
@@ -57,13 +57,13 @@ class MAEDataModule(pl.LightningDataModule):  # type: ignore
             data_dir=self.data_dir,
             patients_included=set(train_patients),
             transforms=self.train_transforms,
-            patch_size=self.patch_size,
+            input_size=self.input_size,
         )
         self.val_dataset = MAEDataset(
             data_dir=self.data_dir,
             patients_included=set(val_patients),
             transforms=self.val_transforms,
-            patch_size=self.patch_size,
+            input_size=self.input_size,
         )
 
     def train_dataloader(self):

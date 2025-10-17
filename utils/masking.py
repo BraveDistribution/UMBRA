@@ -63,7 +63,7 @@ def up_to_voxel_space(
 
 @torch.no_grad()
 def generate_random_mask_conv(
-    x_spatial: Sequence[int],
+    input_size: Sequence[int],
     patch_size: Sequence[int],
     num_downsamples: int,
     batch_size: int,
@@ -79,7 +79,7 @@ def generate_random_mask_conv(
       3) upsample (nearest) to the finest token grid
 
     Args:
-        x_spatial: Spatial dimensions of input tensor (D,H,W) or (H,W) (convention for ConvNets)
+        input_size: Spatial dimensions of input tensor (D,H,W) or (H,W) (convention for ConvNets)
         patch_size: Patch size (pD,pH,pW) or (pH,pW)
         num_downsamples: Number of downsamples (typically len(depths))
         batch_size: Batch size
@@ -94,7 +94,7 @@ def generate_random_mask_conv(
       - "voxel": (B, 1, D, H, W) boolean voxel-space mask (nearest repeat)
     """
     # Normalize shapes
-    spatial = tuple(x_spatial)
+    spatial = tuple(input_size)
     ps = tuple(patch_size)
     mask_ratio = ensure_tuple_dim(mask_ratio, 2)
     assert len(spatial) in [2, 3], f"Expected 2D or 3D input, got {len(spatial)}D"

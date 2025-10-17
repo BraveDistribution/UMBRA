@@ -25,7 +25,7 @@ def _create_data_module(
     contrastive_val_transforms: Optional[Callable],
     contrastive_mode: Literal["regular", "modality_pairs"],
     batch_size: int,
-    patch_size: Sequence[int],
+    input_size: Union[int, Sequence[int]],
     mae_batch_size: Optional[int],
     seed: int,
 ) -> Union[MAEDataModule, ContrastiveDataModule, CombinedDataModule]:
@@ -41,6 +41,8 @@ def _create_data_module(
         contrastive_mode: Mode to use for contrastive learning
         batch_size: Batch size for training
         mae_batch_size: Optional separate batch size for MAE in combined mode
+        input_size: Input image dimensions
+        seed: Random seed for reproducibility
 
     Returns:
         Configured data module
@@ -54,7 +56,7 @@ def _create_data_module(
             train_transforms=mae_train_transforms, 
             val_transforms=mae_val_transforms, 
             batch_size=batch_size,
-            patch_size=patch_size,
+            input_size=input_size,
             seed=seed,
         )
     elif pretraining_mode == "contrastive_only":
@@ -64,7 +66,7 @@ def _create_data_module(
             val_transforms=contrastive_val_transforms, 
             batch_size=batch_size,
             contrastive_mode=contrastive_mode,
-            patch_size=patch_size,
+            input_size=input_size,
             seed=seed,
         )
     elif pretraining_mode == "combined":
@@ -77,7 +79,7 @@ def _create_data_module(
             mae_val_transforms=mae_val_transforms,  # For MAE single volumes (volume key)
             batch_size=batch_size,
             mae_batch_size=mae_batch_size,
-            patch_size=patch_size,
+            input_size=input_size,
             seed=seed,
         )
     else:
@@ -90,7 +92,7 @@ def _create_data_module(
 def _create_or_load_model(
     pretraining_mode: Literal["mae_only", "contrastive_only", "combined"],
     resume_from_checkpoint: Optional[Union[str, Path]],
-    patch_size: Sequence[int],
+    input_size: Union[int, Sequence[int]],
     learning_rate: float,
 ) -> Union[MAEPretrainer, ContrastiveMAEPretrainer]:
     """Create new model or load from checkpoint based on pretraining mode.
@@ -98,7 +100,8 @@ def _create_or_load_model(
     Args:
         pretraining_mode: One of 'mae_only', 'contrastive_only', or 'combined'
         resume_from_checkpoint: Optional path to checkpoint to resume from
-        patch_size: Size of patches for the model
+        input_size: Input image dimensions
+        mask_ratio: Ratio of volume to mask for MAE
         learning_rate: Learning rate for training
 
     Returns:
@@ -115,13 +118,13 @@ def _create_or_load_model(
         if pretraining_mode == "mae_only":
             # Use MAEPretrainer for MAE-only training (cleaner, no contrastive components)
             return MAEPretrainer(
-                patch_size=patch_size,
+                input_size=input_size,
                 learning_rate=learning_rate,
             )
         else:
             # Use ContrastiveMAEPretrainer for contrastive or combined mode
             return ContrastiveMAEPretrainer(
-                patch_size=patch_size,
+                input_size=input_size,
                 learning_rate=learning_rate,
                 pretraining_mode=pretraining_mode,
             )
@@ -132,7 +135,7 @@ def train(
     model_checkpoint_dir: Union[str, Path] = "checkpoints",
     epochs: Optional[int] = None,
     steps: Optional[int] = 250000,
-    patch_size: Sequence[int] = (96, 96, 96),
+    input_size: Union[int, Sequence[int]] = 96,
     batch_size: int = 10,
     learning_rate: float = 1e-4,
     accumulate_grad_batches: int = 3,
@@ -151,7 +154,7 @@ def train(
         model_checkpoint_dir:     Directory to save model checkpoints
         epochs:                   Maximum number of epochs to train
         steps:                    Maximum number of steps to train
-        patch_size:               Input patch size for the model
+        input_size:               Input image dimensions
         batch_size:               Batch size for training
         learning_rate:            Maximum learning rate for training
         accumulate_grad_batches:  Number of gradient accumulation steps
@@ -180,27 +183,29 @@ def train(
     # MAE-only transforms (single volume key)
     mae_train_transforms = get_mae_transforms(
         keys=("volume",),
-        patch_size=patch_size,
+        input_size=input_size,
         val_mode=False,
     )
     mae_val_transforms = get_mae_transforms(
         keys=("volume",),
-        patch_size=patch_size,
+        input_size=input_size,
         val_mode=True,
     )
 
     # Contrastive transforms (vol1, vol2 keys) - used for contrastive_only and combined
     contrastive_train_transforms = get_contrastive_transforms(
         keys=("vol1", "vol2"),
-        patch_size=patch_size,
+        input_size=input_size,
         conservative_mode=True,
         val_mode=False,
+        recon=pretraining_mode == "combined",
     )
     contrastive_val_transforms = get_contrastive_transforms(
         keys=("vol1", "vol2"),
-        patch_size=patch_size,
+        input_size=input_size,
         conservative_mode=True,
         val_mode=True,
+        recon=pretraining_mode == "combined",
     )
 
     checkpoint_callback = ModelCheckpoint(
@@ -223,7 +228,7 @@ def train(
         contrastive_mode=contrastive_mode,
         batch_size=batch_size,
         mae_batch_size=mae_batch_size,
-        patch_size=patch_size,
+        input_size=input_size,
         seed=seed,
     )
 
@@ -231,7 +236,7 @@ def train(
     model = _create_or_load_model(
         pretraining_mode=pretraining_mode,
         resume_from_checkpoint=resume_from_checkpoint,
-        patch_size=patch_size,
+        input_size=input_size,
         learning_rate=learning_rate,
     )
 
@@ -250,7 +255,7 @@ def train(
         accumulate_grad_batches=accumulate_grad_batches,
         max_epochs=max_epochs,
         max_steps=max_steps,
-        log_every_n_steps=10,
+        log_every_n_steps=100,
         gradient_clip_val=1,
         gradient_clip_algorithm="norm",
         strategy=DDPStrategy(find_unused_parameters=True),

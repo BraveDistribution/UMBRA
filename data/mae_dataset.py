@@ -29,7 +29,7 @@ class MAEDataset(Dataset[Dict[str, Any]]):
             Callable[[Dict[str, NDArray]], Union[Dict[str, NDArray], Dict[str, torch.Tensor]]]
         ] = None,
         exclude_contrastive_pairs: bool = False,
-        patch_size: Union[int, Sequence[int]] = 96,
+        input_size: Union[int, Sequence[int]] = 96,
     ) -> None:
         """
         Args:
@@ -37,6 +37,7 @@ class MAEDataset(Dataset[Dict[str, Any]]):
             patients_included: Set of patient IDs to include
             transforms: Transforms to apply to the data
             exclude_contrastive_pairs: Whether to exclude contrastive pairs
+            input_size: Input size to use for random crop
         """
         self.data_dir: Union[str, Path] = data_dir
         self.transforms: Optional[
@@ -45,7 +46,7 @@ class MAEDataset(Dataset[Dict[str, Any]]):
         self.patients_included: Set[str] = patients_included
         self.exclude_contrastive_pairs: bool = exclude_contrastive_pairs
         self.volume_paths: List[str] = []
-        self.patch_size: Tuple[int, int, int] = ensure_tuple_dim(patch_size, 3)
+        self.input_size: Tuple[int, int, int] = ensure_tuple_dim(input_size, 3)
         self.populate_paths()
 
     def populate_paths(self) -> None:
@@ -168,7 +169,7 @@ class MAEDataset(Dataset[Dict[str, Any]]):
         else:
             # Default transforms
             from utils.spatial import random_crop
-            data_dict["volume"] = random_crop(vol, self.patch_size)
+            data_dict["volume"] = random_crop(vol, self.input_size)
 
         # Convert to regular PyTorch tensor if not already
         # This handles both numpy arrays and MONAI MetaTensors
