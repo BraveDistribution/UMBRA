@@ -101,7 +101,6 @@ def _create_or_load_model(
         pretraining_mode: One of 'mae_only', 'contrastive_only', or 'combined'
         resume_from_checkpoint: Optional path to checkpoint to resume from
         input_size: Input image dimensions
-        mask_ratio: Ratio of volume to mask for MAE
         learning_rate: Learning rate for training
 
     Returns:
