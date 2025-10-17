@@ -143,9 +143,8 @@ def get_contrastive_transforms(
         EnsureChannelFirstd(keys=keys, channel_dim=0),
     ]
 
-    # Augmentations
+    # Spatial augmentations
     if not val_mode:
-        # Spatial
         if conservative_mode:
             transforms.extend([
                 RandFlipd(keys=keys, prob=0.5, spatial_axis=0),
@@ -165,14 +164,16 @@ def get_contrastive_transforms(
                         scale_range=(0.1, 0.1, 0.1), shear_range=(0.3, 0.3, 0.3),
                         mode='bilinear', padding_mode='border', prob=1.0),
         ])
+    
+    # Get reconstruction targets
+    if recon:
+        transforms.extend([
+            GetReconstructionTargetd(keys=keys[0], recon_key=f"{keys[0]}_recon"),
+            GetReconstructionTargetd(keys=keys[1], recon_key=f"{keys[1]}_recon"),
+        ])
 
-        if recon:
-            transforms.extend([
-                GetReconstructionTargetd(keys=keys[0], recon_key=f"{keys[0]}_recon"),
-                GetReconstructionTargetd(keys=keys[1], recon_key=f"{keys[1]}_recon"),
-            ])
-
-        # Intensity
+    # Intensity augmentations
+    if not val_mode:
         transforms.extend([
             RandScaleIntensityFixedMeand(keys=keys[0], factors=0.1, prob=0.8),
             RandScaleIntensityFixedMeand(keys=keys[1], factors=0.1, prob=0.8),
