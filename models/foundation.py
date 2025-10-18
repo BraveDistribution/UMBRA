@@ -65,7 +65,7 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
         # Optimizer args
         learning_rate: float = 1e-4,
         min_lr: float = 1e-5,
-        warmup: Union[int, float] = 0.05,
+        warmup: Union[int, float] = 0.02,
     ) -> None:
         """
         Args:
@@ -333,14 +333,14 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         combined_kwargs: Union[Dict[str, Any], float] = {
             "start_frac": 0.05,
             "end_frac": 0.1,
-            "start_val": 0.05,
+            "start_val": 0.1,
             "end_val": 1.0,
             "mode": "linear",
         },
         # Optimizer args
         learning_rate: float = 1e-4,
         min_lr: float = 1e-5,
-        warmup: Union[int, float] = 0.05,
+        warmup: Union[int, float] = 0.02,
         # Pretraining mode
         pretraining_mode: Literal["contrastive_only", "combined"] = "contrastive_only",
     ) -> None:
