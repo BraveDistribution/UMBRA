@@ -19,7 +19,6 @@ from monai.transforms import (
     CenterSpatialCropd,
     Compose,
     EnsureChannelFirstd,
-    LoadImaged,
     OneOf,
     RandFlipd,
     RandAffined,
@@ -139,8 +138,9 @@ def get_contrastive_transforms(
         Compose object with the transforms.
     """
     # Default I/O
-    transforms: list[Callable] = [
-        LoadImaged(keys=keys, ensure_channel_first=True, reader="NumpyReader"),
+    transforms = [
+        ToTensord(keys=keys, track_meta=False),
+        EnsureChannelFirstd(keys=keys, channel_dim=0),
     ]
 
     # Spatial augmentations
