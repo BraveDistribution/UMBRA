@@ -523,7 +523,6 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         """
         # Check if distributed is available and initialized
         import torch.distributed as dist  # type: ignore
-        from typing import List
 
         if not dist.is_available():
             return tensor
@@ -683,10 +682,7 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
                 ],
                 dim=1,
             )
-            # Convert MetaTensors to regular tensors to avoid metadata issues in queue operations
-            k1_tensor = k1.as_tensor() if hasattr(k1, 'as_tensor') else k1
-            k2_tensor = k2.as_tensor() if hasattr(k2, 'as_tensor') else k2
-            self._dequeue_and_enqueue(torch.cat([k1_tensor, k2_tensor]), metadata)
+            self._dequeue_and_enqueue(torch.cat([k1, k2]), metadata)
 
         # Total loss
         alpha: float = (

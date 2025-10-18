@@ -142,8 +142,8 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
         vol2 = load_volume(pair_info["path2"])
 
         data_dict: Dict[str, Any] = {
-            "vol1": vol1,
-            "vol2": vol2,
+            "vol1": pair_info["path1"],
+            "vol2": pair_info["path2"],
             "patient": pair_info["patient"],
             "session": pair_info["session"],
         }
