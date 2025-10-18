@@ -189,7 +189,7 @@ def train(
     max_steps = steps or -1
     
     # Set random seed
-    pl.seed_everything(seed)
+    pl.seed_everything(seed, workers=True)
 
     # Define transforms based on pretraining mode
     # MAE-only transforms (single volume key)

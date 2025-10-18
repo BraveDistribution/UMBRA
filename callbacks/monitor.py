@@ -14,7 +14,6 @@ import torch.optim as optim
 from lightning.pytorch.utilities import rank_zero_only
 
 from utils.nets import get_optimizer_lr, get_total_grad_norm
-from utils.misc import sync_dist_safe
 
 
 class LogLR(pl.Callback):
@@ -23,7 +22,6 @@ class LogLR(pl.Callback):
 
     Adapted from https://github.com/MaastrichtU-CDS/anyBrainer.git
     """
-    @rank_zero_only
     def on_before_optimizer_step(
         self,
         trainer: pl.Trainer,
@@ -40,7 +38,7 @@ class LogLR(pl.Callback):
             on_step=True,
             on_epoch=False,
             prog_bar=False,
-            sync_dist=sync_dist_safe(pl_module),
+            sync_dist=True,
         )
 
 
@@ -50,7 +48,6 @@ class LogGradNorm(pl.Callback):
 
     Adapted from https://github.com/MaastrichtU-CDS/anyBrainer.git
     """
-    @rank_zero_only
     def on_train_batch_end(
         self,
         trainer: pl.Trainer,
@@ -67,5 +64,5 @@ class LogGradNorm(pl.Callback):
             on_step=True,
             on_epoch=False,
             prog_bar=False,
-            sync_dist=sync_dist_safe(pl_module),
+            sync_dist=True,
         )

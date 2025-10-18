@@ -4,7 +4,7 @@ from pathlib import Path
 
 import lightning.pytorch as pl
 from sklearn.model_selection import train_test_split
-from monai.data.dataloader import DataLoader
+from torch.utils.data import DataLoader
 from monai.data.utils import pad_list_data_collate
 
 from data.mae_dataset import MAEDataset

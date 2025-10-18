@@ -2,15 +2,9 @@ from typing import Callable, Optional, Union, Literal, Sequence
 from typing import cast
 from pathlib import Path
 
-try:
-    import lightning.pytorch as pl
-    from lightning.pytorch.utilities.types import EVAL_DATALOADERS  # noqa: F401
-except ImportError:
-    # Fallback if lightning.pytorch is not installed
-    pl = None  # type: ignore
-    EVAL_DATALOADERS = None  # type: ignore
+import lightning.pytorch as pl
 from sklearn.model_selection import train_test_split
-from monai.data.dataloader import DataLoader
+from torch.utils.data import DataLoader
 from monai.data.utils import pad_list_data_collate
 
 from data.contrastive_dataset import ContrastivePatientDataset
