@@ -152,6 +152,7 @@ def train(
     num_checkpoints: int = 20,
     fast_dev_run: Union[bool, int] = False,
     seed: int = 42,
+    **overrides
 ) -> None:
     """
     Args:
@@ -172,7 +173,11 @@ def train(
         num_checkpoints:          Number of intermediate checkpoints to save per training run
         fast_dev_run:             Quick debugging run
         seed:                     Random seed for reproducibility
+        **overrides:              Additional keyword arguments for `pl.Trainer`
     """
+    if overrides:
+        print("[Fire kwargs] extra overrides for `pl.Trainer`:", overrides)
+
     save_dir: Union[str, Path] = Path(model_checkpoint_dir) / experiment_name
 
     # Early failure
@@ -268,8 +273,9 @@ def train(
         log_every_n_steps=100,
         gradient_clip_val=10,
         gradient_clip_algorithm="norm",
-        strategy="auto",
+        strategy=DDPStrategy(find_unused_parameters=True),
         fast_dev_run=fast_dev_run,
+        **overrides,
     )
 
     if resume_from_checkpoint:
