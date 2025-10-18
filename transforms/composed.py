@@ -58,7 +58,7 @@ def get_mae_transforms(
     """
     # Default I/O
     transforms = [
-        ToTensord(keys=keys),
+        ToTensord(keys=keys, track_meta=False),
         EnsureChannelFirstd(keys=keys, channel_dim=0),
     ]
 
@@ -113,9 +113,6 @@ def get_mae_transforms(
         transforms.extend([
             CenterSpatialCropd(keys=keys_with_recon, roi_size=input_size),
         ])
-    transforms.extend([
-        ToTensord(keys=keys_with_recon, track_meta=False),
-    ])
 
     return cast(Callable[[Dict[str, NDArray]], Dict[str, Tensor]], Compose(transforms))
 
@@ -142,7 +139,7 @@ def get_contrastive_transforms(
     """
     # Default I/O
     transforms = [
-        ToTensord(keys=keys),
+        ToTensord(keys=keys, track_meta=False),
         EnsureChannelFirstd(keys=keys, channel_dim=0),
     ]
 
@@ -238,7 +235,5 @@ def get_contrastive_transforms(
         transforms.extend([
             CenterSpatialCropd(keys=keys_with_recon, roi_size=input_size),
         ])
-    transforms.extend([
-        ToTensord(keys=keys_with_recon, track_meta=False),
-    ])
+
     return cast(Callable[[Dict[str, NDArray]], Dict[str, Tensor]], Compose(transforms))
