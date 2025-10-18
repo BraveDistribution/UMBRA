@@ -80,6 +80,7 @@ class ContrastiveDataModule(pl.LightningDataModule):  # type: ignore
         return DataLoader(
             self.train_dataset, 
             batch_size=self.batch_size, 
+            drop_last=True,
             shuffle=True, 
             num_workers=self.num_workers, 
             collate_fn=pad_list_data_collate
@@ -89,6 +90,7 @@ class ContrastiveDataModule(pl.LightningDataModule):  # type: ignore
         return DataLoader(
             self.val_dataset, 
             batch_size=self.batch_size, 
+            drop_last=False,
             shuffle=False, 
             num_workers=self.num_workers, 
             collate_fn=pad_list_data_collate,
