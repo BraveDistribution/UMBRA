@@ -266,7 +266,7 @@ def train(
         max_epochs=max_epochs,
         max_steps=max_steps,
         log_every_n_steps=100,
-        gradient_clip_val=50,
+        gradient_clip_val=10,
         gradient_clip_algorithm="norm",
         strategy=DDPStrategy(find_unused_parameters=True),
         fast_dev_run=fast_dev_run,

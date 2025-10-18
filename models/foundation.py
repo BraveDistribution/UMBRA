@@ -700,17 +700,19 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
 
         # Logging
         prefix = "train" if is_training else "val"
+        log_dict: Dict[str, Union[float, int, torch.Tensor]] = {
+            f"{prefix}/contrastive_loss": contrastive_loss,
+            f"{prefix}/effective_rank": effective_rank(self.queue, method="auto")[0],
+        }
+        if self.pretraining_mode == "combined":
+            log_dict[f"{prefix}/mae_loss"] = mae_loss
+            log_dict[f"{prefix}/combined_loss"] = total_loss
+            log_dict[f"{prefix}/loss_weight"] = alpha
         self.log_dict(
-            {
-                f"{prefix}/loss_combined": total_loss,
-                f"{prefix}/contrastive_loss": contrastive_loss,
-                f"{prefix}/mae_loss": mae_loss,
-                f"{prefix}/loss_weight": alpha,
-                f"{prefix}/effective_rank": effective_rank(self.queue, method="auto")[0],
-            },
-            prog_bar=True,
-            on_step=True,
-            on_epoch=True,
+            log_dict, 
+            prog_bar=True, 
+            on_step=True, 
+            on_epoch=True, 
             sync_dist=True,
         )
 
@@ -731,7 +733,6 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         prefix = "train" if is_training else "val"
         self.log_dict(
             {
-                f"{prefix}/loss_mae_only": mae_loss,
                 f"{prefix}/mae_loss_only": mae_loss,
             },
             prog_bar=True,
