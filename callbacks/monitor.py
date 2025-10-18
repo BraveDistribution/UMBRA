@@ -19,9 +19,8 @@ from utils.nets import get_optimizer_lr, get_total_grad_norm
 class LogLR(pl.Callback):
     """
     Callback to log the learning rate for all optimizers in the trainer.
-
-    Adapted from https://github.com/MaastrichtU-CDS/anyBrainer.git
     """
+    @rank_zero_only
     def on_before_optimizer_step(
         self,
         trainer: pl.Trainer,
@@ -38,15 +37,14 @@ class LogLR(pl.Callback):
             on_step=True,
             on_epoch=False,
             prog_bar=False,
-            sync_dist=True,
+            sync_dist=False,
+            rank_zero_only=True,
         )
 
 
 class LogGradNorm(pl.Callback):
     """
     Callback to log the gradient norm for all parameters in the model.
-
-    Adapted from https://github.com/MaastrichtU-CDS/anyBrainer.git
     """
     def on_train_batch_end(
         self,

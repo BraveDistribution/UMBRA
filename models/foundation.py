@@ -713,6 +713,7 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
             on_step=True, 
             on_epoch=True, 
             sync_dist=True,
+            batch_size=len(batch["vol1"]),
         )
 
         return total_loss
