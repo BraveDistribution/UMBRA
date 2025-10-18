@@ -23,6 +23,7 @@ class MAEDataModule(pl.LightningDataModule):  # type: ignore
         train_transforms: Optional[Callable] = None,
         val_transforms: Optional[Callable] = None,
         batch_size: int = 10,
+        num_workers: int = 32,
         input_size: Union[int, Sequence[int]] = 96,
         seed: int = 42,
     ):
@@ -31,6 +32,7 @@ class MAEDataModule(pl.LightningDataModule):  # type: ignore
         self.train_transforms = train_transforms
         self.val_transforms = val_transforms
         self.batch_size = batch_size
+        self.num_workers = num_workers
         self.input_size = input_size
         self.seed = seed
         self.setup(None)
@@ -74,7 +76,7 @@ class MAEDataModule(pl.LightningDataModule):  # type: ignore
             self.train_dataset, 
             batch_size=self.batch_size, 
             shuffle=True, 
-            num_workers=32, 
+            num_workers=self.num_workers, 
             collate_fn=pad_list_data_collate,
         )
 
@@ -83,6 +85,6 @@ class MAEDataModule(pl.LightningDataModule):  # type: ignore
             self.val_dataset, 
             batch_size=self.batch_size, 
             shuffle=False, 
-            num_workers=32, 
+            num_workers=self.num_workers, 
             collate_fn=pad_list_data_collate,
         )

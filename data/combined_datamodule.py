@@ -34,6 +34,7 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
         self,
         data_dir: Union[str, Path],
         batch_size: int = 10,
+        num_workers: int = 32,
         input_size: Union[int, Sequence[int]] = 96,
         mae_batch_size: Optional[int] = None,
         mae_train_transforms: Optional[Callable] = None,
@@ -51,6 +52,7 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
         self.mae_train_transforms = mae_train_transforms  # MAE transforms (volume key)
         self.mae_val_transforms = mae_val_transforms  # MAE transforms (volume key)
         self.batch_size = batch_size
+        self.num_workers = num_workers
         self.input_size = input_size
         self.mae_batch_size = (
             mae_batch_size if mae_batch_size is not None else batch_size
@@ -116,7 +118,7 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
             self.contrastive_train_dataset,
             batch_size=self.batch_size,
             shuffle=True,
-            num_workers=32,
+            num_workers=self.num_workers,
             collate_fn=pad_list_data_collate,
         )
 
@@ -124,7 +126,7 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
             self.mae_train_dataset,
             batch_size=self.mae_batch_size,
             shuffle=True,
-            num_workers=32,
+            num_workers=self.num_workers,
             collate_fn=pad_list_data_collate,
         )
 
@@ -135,7 +137,7 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
             self.contrastive_val_dataset,
             batch_size=self.batch_size,
             shuffle=False,
-            num_workers=32,
+            num_workers=self.num_workers,
             collate_fn=pad_list_data_collate,
         )
 
@@ -143,7 +145,7 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
             self.mae_val_dataset,
             batch_size=self.mae_batch_size,
             shuffle=False,
-            num_workers=32,
+            num_workers=self.num_workers,
             collate_fn=pad_list_data_collate,
         )
 

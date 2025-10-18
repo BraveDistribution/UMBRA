@@ -25,6 +25,7 @@ def _create_data_module(
     contrastive_val_transforms: Optional[Callable],
     contrastive_mode: Literal["regular", "modality_pairs"],
     batch_size: int,
+    num_workers: int,
     input_size: Union[int, Sequence[int]],
     mae_batch_size: Optional[int],
     seed: int,
@@ -40,6 +41,7 @@ def _create_data_module(
         contrastive_val_transforms: Transforms for contrastive learning validation
         contrastive_mode: Mode to use for contrastive learning
         batch_size: Batch size for training
+        num_workers: Number of workers for data loading
         mae_batch_size: Optional separate batch size for MAE in combined mode
         input_size: Input image dimensions
         seed: Random seed for reproducibility
@@ -56,6 +58,7 @@ def _create_data_module(
             train_transforms=mae_train_transforms, 
             val_transforms=mae_val_transforms, 
             batch_size=batch_size,
+            num_workers=num_workers,
             input_size=input_size,
             seed=seed,
         )
@@ -65,6 +68,7 @@ def _create_data_module(
             train_transforms=contrastive_train_transforms, 
             val_transforms=contrastive_val_transforms, 
             batch_size=batch_size,
+            num_workers=num_workers,
             contrastive_mode=contrastive_mode,
             input_size=input_size,
             seed=seed,
@@ -79,6 +83,7 @@ def _create_data_module(
             mae_val_transforms=mae_val_transforms,  # For MAE single volumes (volume key)
             batch_size=batch_size,
             mae_batch_size=mae_batch_size,
+            num_workers=num_workers,
             input_size=input_size,
             seed=seed,
         )
@@ -136,6 +141,7 @@ def train(
     steps: Optional[int] = 250000,
     input_size: Union[int, Sequence[int]] = 96,
     batch_size: int = 10,
+    num_workers: int = 32,
     learning_rate: float = 1e-4,
     accumulate_grad_batches: int = 3,
     experiment_name: str = "default_experiment",
@@ -155,6 +161,7 @@ def train(
         steps:                    Maximum number of steps to train
         input_size:               Input image dimensions
         batch_size:               Batch size for training
+        num_workers:              Number of workers for data loading
         learning_rate:            Maximum learning rate for training
         accumulate_grad_batches:  Number of gradient accumulation steps
         experiment_name:          Name of the experiment
@@ -227,6 +234,7 @@ def train(
         contrastive_val_transforms=contrastive_val_transforms,
         contrastive_mode=contrastive_mode,
         batch_size=batch_size,
+        num_workers=num_workers,
         mae_batch_size=mae_batch_size,
         input_size=input_size,
         seed=seed,
