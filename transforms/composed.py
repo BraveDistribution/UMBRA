@@ -213,8 +213,8 @@ def get_contrastive_transforms(
         keys_with_recon_1 = [keys[0], f"{keys[0]}_recon"]
         keys_with_recon_2 = [keys[1], f"{keys[1]}_recon"]
     else:
-        keys_with_recon_1 = keys[0]
-        keys_with_recon_2 = keys[1]
+        keys_with_recon_1 = [keys[0]]
+        keys_with_recon_2 = [keys[1]]
     keys_with_recon = [*keys_with_recon_1, *keys_with_recon_2]
     
     # Pad and crop to match input size
