@@ -257,6 +257,8 @@ def train(
     )
 
     print("Starting training...")
+    import torch
+    torch.set_float32_matmul_precision("high")
     trainer = pl.Trainer(
         accelerator="gpu",
         logger=wandb_logger,
