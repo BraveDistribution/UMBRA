@@ -150,7 +150,7 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
 
         if self.transforms:
             # Transforms only applied to volumes for safety
-            transformed = self.transforms({"vol1": vol1, "vol2": vol2})
+            transformed = self.transforms({"vol1": pair_info["path1"], "vol2": pair_info["path1"]})
             data_dict["vol1"] = transformed["vol1"]
             data_dict["vol2"] = transformed["vol2"]
         else:
