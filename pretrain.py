@@ -7,6 +7,7 @@ from fire import Fire
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.strategies import DDPStrategy
+import torch
 
 from data.combined_datamodule import CombinedDataModule
 from data.contrastive_datamodule import ContrastiveDataModule
@@ -260,6 +261,9 @@ def train(
         entity="matejgazda-technical-university-of-kosice",
         log_model=True,
     )
+
+    # Set float32 matmul precision to high for better performance
+    torch.set_float32_matmul_precision("medium")
 
     print("Starting training...")
     trainer = pl.Trainer(
