@@ -34,7 +34,6 @@ class MAEDataModule(pl.LightningDataModule):  # type: ignore
         self.num_workers = num_workers
         self.input_size = input_size
         self.seed = seed
-        self.setup(None)
 
     def setup(self, stage: Optional[str]):
         # Extract patient IDs from hierarchical directory structure

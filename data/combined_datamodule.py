@@ -51,7 +51,6 @@ class CombinedDataModule(pl.LightningDataModule):  # type: ignore
             mae_batch_size if mae_batch_size is not None else batch_size
         )
         self.seed = seed
-        self.setup(None)
 
     def setup(self, stage: Optional[str]):
         # Extract patient IDs from hierarchical directory structure

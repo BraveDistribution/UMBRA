@@ -5,6 +5,7 @@ from __future__ import annotations
 __all__ = [
     "load_volume", 
     "load_volume_and_header",
+    "check_corrupted_files",
 ]
 
 import os
