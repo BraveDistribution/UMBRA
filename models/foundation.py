@@ -320,7 +320,7 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         mask_ratio: Union[float, Sequence[float]] = [0.6, 0.75],
         input_size: Union[int, Sequence[int]] = 96,
         # Contrastive learning args
-        temperature: float = 0.1,
+        temperature: float = 0.2,
         queue_size: int = 16384,
         momentum_kwargs: Union[Dict[str, Any], float] = {
             "start_frac": 0.05,
