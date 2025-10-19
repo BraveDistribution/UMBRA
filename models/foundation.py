@@ -590,12 +590,18 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         # queue_metadata[:, 0] contains patient IDs
         queue_patient_ids = self.queue_metadata[:, 0]  # (queue_size,)
 
-        # Create mask: True where queue patient != current patient
-        # Shape: (batch_size, queue_size)
-        mask = patient_ids.unsqueeze(1) != queue_patient_ids.unsqueeze(0)
+        # Create valid queue mask: True where queue entry has been initialized (patient_id != 0)
+        valid_queue_mask = queue_patient_ids != 0  # (queue_size,)
 
-        # Apply mask: set same-patient negatives to very negative value
-        l_neg = torch.where(mask, l_neg, torch.tensor(-10.0, device=l_neg.device))
+        # Create patient-mismatch mask: True where queue patient != current patient
+        patient_mismatch_mask = patient_ids.unsqueeze(1) != queue_patient_ids.unsqueeze(0) # (B, queue_size)
+
+        # Combine masks to get valid negatives
+        valid_negative_mask = patient_mismatch_mask & valid_queue_mask.unsqueeze(0) # (B, queue_size)
+        num_valid_negatives = valid_negative_mask.sum(dim=1) # (B,); for debugging/monitoring
+
+        # Apply mask: set invalid negatives to very negative value
+        l_neg = torch.where(valid_negative_mask, l_neg, torch.tensor(-10.0, device=l_neg.device))
 
         # Clamp for numerical stability
         l_pos = torch.clamp(l_pos, min=-1.0, max=1.0)
@@ -611,6 +617,10 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
             self.log("debug/l_pos_max", l_pos.max())
             self.log("debug/l_neg_min", l_neg.min())
             self.log("debug/l_neg_max", l_neg.max())
+
+        # Log number of valid negatives per query for debugging/monitoring
+        self.log("debug/mean_negatives", num_valid_negatives.float().mean(),
+            on_step=True, on_epoch=False, rank_zero_only=True, sync_dist=False)
 
         labels: torch.Tensor = torch.zeros(
             logits.size(0), dtype=torch.long, device=logits.device
