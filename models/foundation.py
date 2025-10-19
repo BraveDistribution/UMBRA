@@ -60,7 +60,7 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
         # Weight init
         weight_init_fn: Optional[Callable[[nn.Module], None]] = None,
         # Masking args
-        mask_ratio: Union[float, Sequence[float]] = [0.6, 0.75],
+        mask_ratio: Union[float, Sequence[float]] = [0.5, 0.75],
         input_size: Union[int, Sequence[int]] = 96,
         # Optimizer args
         learning_rate: float = 1e-4,
@@ -317,7 +317,7 @@ class ContrastiveMAEPretrainer(MAEPretrainer):  # type: ignore
         extra_swin_kwargs: Optional[Dict[str, Any]] = None,
         weight_init_fn: Optional[Callable[[nn.Module], None]] = None,
         # Masking args
-        mask_ratio: Union[float, Sequence[float]] = [0.6, 0.75],
+        mask_ratio: Union[float, Sequence[float]] = [0.5, 0.75],
         input_size: Union[int, Sequence[int]] = 96,
         # Contrastive learning args
         temperature: float = 0.2,

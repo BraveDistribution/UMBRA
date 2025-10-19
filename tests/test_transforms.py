@@ -74,6 +74,7 @@ class TestTransformShapes:
         assert result["vol1_recon"].shape == (1, 96, 96, 96)
         assert result["vol2_recon"].shape == (1, 96, 96, 96)
 
+
 @pytest.mark.viz
 class TestVisualizeTransforms:
     """Group of tests for visualizing transforms."""
@@ -150,7 +151,7 @@ class TestVisualizeTransforms:
             "vol1_recon": result["vol1_recon"], 
             "vol2_recon": result["vol2_recon"]
         },
-        title="Contrative (with Reconstruction) Training Transforms"
+        title="Contrastive (with Reconstruction) Training Transforms"
         )
         assert True
     
@@ -174,6 +175,6 @@ class TestVisualizeTransforms:
             "vol1_recon": result["vol1_recon"], 
             "vol2_recon": result["vol2_recon"]
         },
-        title="Contrative (with Reconstruction) Validation Transforms"
+        title="Contrastive (with Reconstruction) Validation Transforms"
         )
         assert True
