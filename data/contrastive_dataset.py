@@ -160,7 +160,7 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
         # Convert to regular PyTorch tensor if not already
         # This handles both numpy arrays and MONAI MetaTensors
         for k in data_dict.keys():
-            if k not in ["vol1", "vol2"]:
+            if k in ["patient", "session"]:
                 continue
             if not isinstance(data_dict[k], torch.Tensor):
                 # Make a copy to ensure the array is writable
