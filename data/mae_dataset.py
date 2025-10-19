@@ -176,11 +176,13 @@ class MAEDataset(Dataset[Dict[str, Any]]):
         # Convert to regular PyTorch tensor if not already
         # This handles both numpy arrays and MONAI MetaTensors
         for k in data_dict.keys():
-            if not isinstance(data_dict[k], torch.Tensor):
+            if isinstance(data_dict[k], torch.Tensor):
+                if hasattr(data_dict[k], "as_tensor"):
+                    # Convert MetaTensor to regular tensor
+                    data_dict[k] = data_dict[k].as_tensor() # type: ignore[hasAttribute]
+            elif isinstance(data_dict[k], np.ndarray):
                 # Make a copy to ensure the array is writable
                 data_dict[k] = torch.from_numpy(data_dict[k].copy()).float()
-            elif hasattr(data_dict[k], "as_tensor"):
-                # Convert MetaTensor to regular tensor
-                data_dict[k] = data_dict[k].as_tensor() # type: ignore[hasAttribute]
+            # Skip other types (e.g., lists, strings, etc.) - these are metadata
 
         return data_dict
