@@ -178,9 +178,11 @@ def train(
         **overrides:              Additional keyword arguments for `pl.Trainer`
     """
     # Check for corrupted files
+    print("Checking for corrupted files...")
     corrupted_files = check_corrupted_files(data_dir)
     if corrupted_files:
         raise ValueError(f"Found {len(corrupted_files)} corrupted files in {data_dir}")
+    print("No corrupted files found.")
 
     # Early failure
     if epochs is None and steps is None:
