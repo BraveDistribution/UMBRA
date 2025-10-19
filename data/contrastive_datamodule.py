@@ -37,7 +37,6 @@ class ContrastiveDataModule(pl.LightningDataModule):  # type: ignore
         self.input_size = input_size
         self.contrastive_mode = contrastive_mode
         self.seed = seed
-        self.setup(None)
 
     def setup(self, stage: Optional[str]):
         # Extract patient IDs from hierarchical directory structure
