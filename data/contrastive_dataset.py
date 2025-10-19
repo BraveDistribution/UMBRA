@@ -1,13 +1,11 @@
-from json import load
-import os
-import random
-import re
 from itertools import combinations
 from pathlib import Path
+import re
 from typing import Any, Callable, Dict, List, Optional, Set, Literal, Union, Sequence
 
 import numpy as np
 from numpy.typing import NDArray
+import torch
 from torch.utils.data import Dataset
 
 from utils import (
@@ -151,13 +149,24 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
         if self.transforms:
             # Transforms only applied to volumes for safety
             transformed = self.transforms({"vol1": vol1, "vol2": vol2})
-            data_dict["vol1"] = transformed["vol1"]
-            data_dict["vol2"] = transformed["vol2"]
+            data_dict.update(transformed)
         else:
             # Default transforms
             from utils.spatial import shared_random_crop
             data_dict["vol1"], data_dict["vol2"] = (
                 shared_random_crop(vol1, vol2, self.input_size)
             )
+
+        # Convert to regular PyTorch tensor if not already
+        # This handles both numpy arrays and MONAI MetaTensors
+        for k in data_dict.keys():
+            if k not in ["vol1", "vol2"]:
+                continue
+            if not isinstance(data_dict[k], torch.Tensor):
+                # Make a copy to ensure the array is writable
+                data_dict[k] = torch.from_numpy(data_dict[k].copy()).float()
+            elif hasattr(data_dict[k], "as_tensor"):
+                # Convert MetaTensor to regular tensor
+                data_dict[k] = data_dict[k].as_tensor() # type: ignore[hasAttribute]
 
         return data_dict
