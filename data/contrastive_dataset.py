@@ -149,7 +149,14 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
         if self.transforms:
             # Transforms only applied to volumes for safety
             transformed = self.transforms({"vol1": vol1, "vol2": vol2})
-            data_dict.update(transformed)
+            # Update only the volume keys (and any recon keys)
+            data_dict["vol1"] = transformed["vol1"]
+            data_dict["vol2"] = transformed["vol2"]
+            # Add reconstruction targets if they exist
+            if "vol1_recon" in transformed:
+                data_dict["vol1_recon"] = transformed["vol1_recon"]
+            if "vol2_recon" in transformed:
+                data_dict["vol2_recon"] = transformed["vol2_recon"]
         else:
             # Default transforms
             from utils.spatial import shared_random_crop
@@ -160,6 +167,7 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
         # Convert to regular PyTorch tensor if not already
         # This handles both numpy arrays and MONAI MetaTensors
         for k in data_dict.keys():
+            # Skip metadata keys
             if k in ["patient", "session"]:
                 continue
             if not isinstance(data_dict[k], torch.Tensor):
