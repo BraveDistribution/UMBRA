@@ -1,11 +1,11 @@
 from pathlib import Path
 from typing import Optional, Sequence, Union, Callable, Optional, Literal
-from typing import cast
 
 import lightning.pytorch as pl
 from fire import Fire
 from lightning.pytorch.callbacks import ModelCheckpoint
-from lightning.pytorch.loggers import WandbLogger
+#from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.loggers import CSVLogger
 from lightning.pytorch.strategies import DDPStrategy
 import torch
 
@@ -263,12 +263,7 @@ def train(
         learning_rate=learning_rate,
     )
 
-    wandb_logger = WandbLogger(
-        project="PretrainingFOMO25New",
-        name=experiment_name,
-        entity="matejgazda-technical-university-of-kosice",
-        log_model=True,
-    )
+    csv_logger = CSVLogger(save_dir=model_checkpoint_dir, name=experiment_name)
 
     # Set float32 matmul precision to high for better performance
     torch.set_float32_matmul_precision("medium")
@@ -276,7 +271,7 @@ def train(
     print("Starting training...")
     trainer = pl.Trainer(
         accelerator="gpu",
-        logger=wandb_logger,
+        logger=csv_logger,
         callbacks=[checkpoint_callback, LogLR(), LogGradNorm()],
         precision="bf16-mixed",
         accumulate_grad_batches=accumulate_grad_batches,
