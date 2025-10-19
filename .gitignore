@@ -210,3 +210,6 @@ __marimo__/
 
 # Example folders for tests
 examples/
+
+# Extra
+.DS_Store
