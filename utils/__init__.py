@@ -1,7 +1,8 @@
 """
 Utility functions for the UMBRA project.
 
-Utilities are allowed to import from misc; not vice versa to avoid circular imports.
+Misc, IO do not rely on other in-package imports and can be used by other
+util modules without causing circular imports.
 
 This package contains various utility functions for masking, preprocessing,
 and other common operations.
@@ -13,3 +14,4 @@ from utils.io import *
 from utils.spatial import *
 from utils.nets import *
 from utils.metrics import *
+from utils.visualization import *
