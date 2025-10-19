@@ -3,13 +3,24 @@ Custom MONAI-compatible transforms.
 """
 
 from __future__ import annotations
+
+__all__ = [
+    "CreateRandomMaskd",
+    "GetReconstructionTargetd",
+    "PadToMaxOfKeysd",
+]
 from typing import Sequence
 
 import torch
 import numpy as np
+from typing import Dict, Any, Hashable
 from monai.transforms.transform import MapTransform, Randomizable
 from monai.utils.enums import TransformBackends
 from monai.data.meta_tensor import MetaTensor
+# pyright: reportPrivateImportUsage=false
+from monai.transforms import (
+    SpatialPadd,
+)
 
 from utils.misc import ensure_tuple_dim
 
@@ -119,3 +130,36 @@ class GetReconstructionTargetd(MapTransform):
         for key in self.key_iterator(d):
             d[self.recon_key] = d[key].clone()
         return d
+
+
+class PadToMaxOfKeysd(MapTransform):
+    """
+    Pads all `keys` in a sample to the largest spatial size among those keys.
+    Assumes images have at least 3 spatial dims; uses last 3 dims as (H,W,D).
+    """
+    def __init__(self, keys: Sequence[Hashable], **kwargs):
+        """
+        Args:
+            keys: Keys to pad
+            **kwargs: Keyword arguments for `monai.transforms.SpatialPadd`
+        """
+        super().__init__(keys)
+        self.kwargs = kwargs
+
+    def __call__(self, data: Dict[Hashable, Any]) -> Dict[Hashable, Any]:
+        d = dict(data)
+        # Find target (H,W,D)
+        sizes = []
+        for k in self.keys:
+            x = d[k]
+            shape = tuple(x.shape[-3:])  # use last 3 dims
+            sizes.append(shape)
+        target = tuple(max(s[i] for s in sizes) for i in range(3))
+
+        # Pad to target size
+        padder = SpatialPadd(
+            keys=self.keys, 
+            spatial_size=target, 
+            **self.kwargs
+        )
+        return padder(d)

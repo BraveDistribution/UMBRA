@@ -5,7 +5,6 @@ from pathlib import Path
 import lightning.pytorch as pl
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
-from monai.data.utils import pad_list_data_collate
 
 from data.mae_dataset import MAEDataset
 
@@ -77,7 +76,6 @@ class MAEDataModule(pl.LightningDataModule):  # type: ignore
             batch_size=self.batch_size, 
             shuffle=True, 
             num_workers=self.num_workers, 
-            collate_fn=pad_list_data_collate,
         )
 
     def val_dataloader(self):
@@ -86,5 +84,4 @@ class MAEDataModule(pl.LightningDataModule):  # type: ignore
             batch_size=self.batch_size, 
             shuffle=False, 
             num_workers=self.num_workers, 
-            collate_fn=pad_list_data_collate,
         )

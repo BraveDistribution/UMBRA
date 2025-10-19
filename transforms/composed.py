@@ -30,12 +30,14 @@ from monai.transforms import (
     RandScaleIntensityFixedMeand,
     RandSimulateLowResolutiond,
     RandSpatialCropd,
+    ResizeWithPadOrCropd,
     SpatialPadd,
     ToTensord,
 )
 
 from transforms.unit import (
     GetReconstructionTargetd, 
+    PadToMaxOfKeysd,
 )
 
 def get_mae_transforms(
@@ -103,7 +105,7 @@ def get_mae_transforms(
     # Pad and crop to match input size for volume(s) and target
     keys_with_recon = [f"{keys[0]}_recon", *keys]
     transforms.extend([
-        SpatialPadd(keys=keys_with_recon, spatial_size=input_size),
+        SpatialPadd(keys=keys_with_recon, spatial_size=input_size, mode='edge'),
     ])
     if not val_mode:
         transforms.extend([
@@ -164,6 +166,11 @@ def get_contrastive_transforms(
                         scale_range=(0.1, 0.1, 0.1), shear_range=(0.3, 0.3, 0.3),
                         mode='bilinear', padding_mode='border', prob=1.0),
         ])
+
+    # Ensure all keys have the same spatial size
+    transforms.extend([
+        PadToMaxOfKeysd(keys=keys, mode='edge'),
+    ])
     
     # Get reconstruction targets
     if recon:
@@ -219,7 +226,7 @@ def get_contrastive_transforms(
     
     # Pad and crop to match input size
     transforms.extend([
-        SpatialPadd(keys=keys_with_recon, spatial_size=input_size),
+        SpatialPadd(keys=keys_with_recon, spatial_size=input_size, mode='edge'),
     ])
     if not val_mode:
         if conservative_mode:
@@ -235,5 +242,5 @@ def get_contrastive_transforms(
         transforms.extend([
             CenterSpatialCropd(keys=keys_with_recon, roi_size=input_size),
         ])
-
+   
     return cast(Callable[[Dict[str, NDArray]], Dict[str, Tensor]], Compose(transforms))

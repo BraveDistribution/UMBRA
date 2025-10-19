@@ -6,7 +6,6 @@ from pathlib import Path
 import lightning.pytorch as pl
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
-from monai.data.utils import pad_list_data_collate
 
 from data.contrastive_dataset import ContrastivePatientDataset
 
@@ -83,7 +82,6 @@ class ContrastiveDataModule(pl.LightningDataModule):  # type: ignore
             drop_last=True,
             shuffle=True, 
             num_workers=self.num_workers, 
-            collate_fn=pad_list_data_collate
         )
 
     def val_dataloader(self):
@@ -93,5 +91,4 @@ class ContrastiveDataModule(pl.LightningDataModule):  # type: ignore
             drop_last=False,
             shuffle=False, 
             num_workers=self.num_workers, 
-            collate_fn=pad_list_data_collate,
         )
