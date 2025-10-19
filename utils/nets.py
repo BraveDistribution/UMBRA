@@ -12,7 +12,16 @@ import math
 
 import torch
 import torch.nn as nn
-from lightning.pytorch.utilities import rank_zero_only
+try:
+    from lightning.pytorch.utilities import rank_zero_only
+except ImportError:
+    try:
+        from pytorch_lightning.utilities import rank_zero_only
+    except ImportError:
+        # Fallback for when neither import works
+        def rank_zero_only(func):
+            """Dummy rank_zero_only decorator that does nothing."""
+            return func
 
 if TYPE_CHECKING:
     import torch.optim as optim
