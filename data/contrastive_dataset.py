@@ -144,8 +144,8 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
         data_dict: Dict[str, Any] = {
             "vol1": vol1,
             "vol2": vol2,
-            "patient": vol1,
-            "session": vol2,
+            "patient": pair_info["patient"],
+            "session": pair_info["session"],
         }
 
         if self.transforms:

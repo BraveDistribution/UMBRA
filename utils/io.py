@@ -27,12 +27,12 @@ def load_volume(path: str) -> NDArray[np.float32]:
     """Load a volume from a .npy file."""
     vol: NDArray[Any] = np.load(path, allow_pickle=True)
     if vol.ndim == 3:
-        vol = vol[np.newaxis, ...]  # (1,H,W,D)
-    
-    # Ensure writable, contiguous, and correct dtype
-    # Always make a copy to avoid view-related issues with PyTorch collation
-    vol = np.array(vol, dtype=np.float32, copy=True)
-    
+        vol = vol[np.newaxis, ...] # (1,H,W,D)
+    # ensure writable, correct dtype
+    if not vol.flags.writeable:
+        vol = np.array(vol, dtype=np.float32, copy=True)
+    else:
+        vol = vol.astype(np.float32, copy=False)
     return vol
 
 def load_volume_and_header(file: str) -> tuple[NDArray[np.float32], Any]:
