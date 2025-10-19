@@ -15,6 +15,7 @@ from data.mae_datamodule import MAEDataModule
 from models.foundation import ContrastiveMAEPretrainer, MAEPretrainer
 from transforms.composed import get_mae_transforms, get_contrastive_transforms
 from callbacks.monitor import LogLR, LogGradNorm
+from utils.io import check_corrupted_files
 
 
 def _create_data_module(
@@ -176,14 +177,19 @@ def train(
         seed:                     Random seed for reproducibility
         **overrides:              Additional keyword arguments for `pl.Trainer`
     """
-    if overrides:
-        print("[Fire kwargs] extra overrides for `pl.Trainer`:", overrides)
-
-    save_dir: Union[str, Path] = Path(model_checkpoint_dir) / experiment_name
+    # Check for corrupted files
+    corrupted_files = check_corrupted_files(data_dir)
+    if corrupted_files:
+        raise ValueError(f"Found {len(corrupted_files)} corrupted files in {data_dir}")
 
     # Early failure
     if epochs is None and steps is None:
         raise ValueError("Either `max_epochs` or `max_steps` must be provided")
+
+    if overrides:
+        print("[Fire kwargs] extra overrides for `pl.Trainer`:", overrides)
+
+    save_dir: Union[str, Path] = Path(model_checkpoint_dir) / experiment_name
     
     max_epochs = epochs if (steps is None) else None
     max_steps = steps or -1

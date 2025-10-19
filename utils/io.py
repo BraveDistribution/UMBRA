@@ -8,9 +8,11 @@ __all__ = [
 ]
 
 import os
+from pathlib import Path
+
 import numpy as np
 from numpy.typing import NDArray
-from typing import Any
+from typing import Any, Union
 
 try:
     from batchgenerators.utilities.file_and_folder_operations import (  # type: ignore
@@ -52,3 +54,19 @@ def load_volume_and_header(file: str) -> tuple[NDArray[np.float32], Any]:
     if np.isnan(vol).any() or np.isinf(vol).any():
         vol = np.nan_to_num(vol, nan=0.0, posinf=1.0, neginf=0.0, copy=True)
     return vol, header
+
+def check_corrupted_files(data_dir: Union[str, Path]) -> list[str]:
+    data_dir = Path(data_dir)
+    corrupted = []
+
+    for npy_file in data_dir.rglob("*.npy"):
+        try:
+            vol = load_volume(str(npy_file))
+            if vol.size == 0 or np.isnan(vol).all():
+                corrupted.append(str(npy_file))
+        except Exception as e:
+            corrupted.append(str(npy_file))
+            print(f"Error loading {npy_file}: {e}")
+
+    print(f"Found {len(corrupted)} corrupted files")
+    return corrupted
