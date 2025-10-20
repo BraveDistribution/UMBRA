@@ -188,7 +188,6 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
         # Logging
         self.log_dict(
             {
-                "train/loss_mae": mae_loss,
                 "train/mae_loss": mae_loss,
             },
             prog_bar=True,
@@ -224,7 +223,6 @@ class MAEPretrainer(pl.LightningModule):  # type: ignore
         # Logging
         self.log_dict(
             {
-                "val/loss_mae": mae_loss,
                 "val/mae_loss": mae_loss,
             },
             prog_bar=False,
