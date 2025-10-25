@@ -181,6 +181,7 @@ class SwinMAE(nn.Module):
         out = self.head(feats)
         return out
 
+
 class Swinv2LateFusionFPNDecoder(nn.Module):
     """
     SwinViT v2 with lightweight FPN decoder.

@@ -16,7 +16,7 @@ from transforms import (
     get_contrastive_transforms,
 )   
 from utils.visualization import plot_npy_volumes
-from utils.io import load_volume
+from utils.data  import load_volume
 
 
 def generate_random_4d_volume(shape):

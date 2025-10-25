@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Literal, Union, Seq
 import numpy as np
 from numpy.typing import NDArray
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data   import Dataset
 
 from utils import (
     ensure_tuple_dim,
@@ -47,9 +47,9 @@ class ContrastivePatientDataset(Dataset[Dict[str, NDArray[np.float32]]]):
         self.contrastive_mode: Literal["regular", "modality_pairs"] = contrastive_mode
         self.patients_sessions: Dict[str, Dict[str, List[str]]] = {}
         self.pairs: List[Dict[str, str]] = []
-        self.populate_paths()
+        self._populate_paths()
 
-    def populate_paths(self) -> None:
+    def _populate_paths(self) -> None:
         """Walk hierarchical directory structure: data_dir/sub_X/ses_Y/*.npy
 
         Structure:

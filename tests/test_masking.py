@@ -14,7 +14,7 @@ from monai.networks.blocks.patchembedding import PatchEmbed
 
 from utils.masking import generate_random_mask_conv, up_to_voxel_space
 from utils.visualization import plot_npy_volumes
-from utils.io import load_volume
+from utils.data  import load_volume
 from models.blocks import (
     MaskTokenInjector,
     PatchEmbedWithMask,

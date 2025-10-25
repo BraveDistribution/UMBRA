@@ -1,5 +1,4 @@
-"""Callbacks for monitoring the training process."""
-
+"""Custom Pytorch Lightning callbacks."""
 from __future__ import annotations
 
 __all__ = [

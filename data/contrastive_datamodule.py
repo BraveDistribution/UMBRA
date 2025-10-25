@@ -5,7 +5,7 @@ from pathlib import Path
 
 import lightning.pytorch as pl
 from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader
+from torch.utils.data   import DataLoader
 
 from data.contrastive_dataset import ContrastivePatientDataset
 

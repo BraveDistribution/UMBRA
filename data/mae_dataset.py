@@ -6,7 +6,7 @@ import re
 import numpy as np
 from numpy.typing import NDArray
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data   import Dataset
 
 from utils import ensure_tuple_dim, load_volume
 
@@ -47,9 +47,9 @@ class MAEDataset(Dataset[Dict[str, Any]]):
         self.exclude_contrastive_pairs: bool = exclude_contrastive_pairs
         self.volume_paths: List[str] = []
         self.input_size: Tuple[int, int, int] = ensure_tuple_dim(input_size, 3)
-        self.populate_paths()
+        self._populate_paths()
 
-    def populate_paths(self) -> None:
+    def _populate_paths(self) -> None:
         """Walk hierarchical directory structure: data_dir/sub_X/ses_Y/*.npy
 
         Unlike ContrastivePatientDataset, this includes ALL scan types

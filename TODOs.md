@@ -1,15 +1,7 @@
 # TODOs
 
 ## Code
-1. Improve data loading
-2. Models
-3. Testing
-   - Check InfoNCE
-   - Check contrastive only fallback
-   - Test `PatchEmbedWithMask`
-   - Test and viz transforms
-   - Test `SwinMAE` and `SwinEncoderMAE` to check successful integration of `PatchEmbedWithMask` to existing API
-4. Logging
+1. Logging
 
 ## Comments
 1. Mae dataset + datamodule: violates separation of concerns:

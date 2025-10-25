@@ -7,24 +7,17 @@ __all__ = [
     "swap_in_to_gn",
 ]
 
+from typing import Any, Sequence, Dict, Union, Optional, List, Tuple
 from typing import TYPE_CHECKING
+from pathlib import Path
 import math
 
 import torch
 import torch.nn as nn
-try:
-    from lightning.pytorch.utilities import rank_zero_only
-except ImportError:
-    try:
-        from pytorch_lightning.utilities import rank_zero_only
-    except ImportError:
-        # Fallback for when neither import works
-        def rank_zero_only(func):
-            """Dummy rank_zero_only decorator that does nothing."""
-            return func
 
 if TYPE_CHECKING:
     import torch.optim as optim
+
 
 def _trunc_normal_(tensor: torch.Tensor, mean: float = 0., std: float = 1.,
                    a: float = -2., b: float = 2.) -> torch.Tensor:
@@ -118,7 +111,7 @@ def swap_in_to_gn(module: nn.Module, groups: int = 8) -> None:
         else:
             swap_in_to_gn(child, groups)
 
-def get_optimizer_lr(optimizers: list[optim.Optimizer]) -> dict[str, float]:
+def get_optimizer_lr(optimizers: List[optim.Optimizer]) -> Dict[str, float]:
     """Get optimizer learning rates."""
     return {
         f"train/lr/opt{i}_group{j}": group["lr"]
@@ -136,3 +129,134 @@ def get_total_grad_norm(model: nn.Module) -> torch.Tensor:
         ]), p=2,
     )
     return total_norm
+
+def load_param_group_from_ckpt(
+    model_instance: nn.Module,
+    *,
+    checkpoint_path: Path,
+    select_prefixes: Optional[Union[str, Sequence[str]]] = None,
+    rename_map: Optional[Dict[str, str]] = None,
+    strict: bool = False,
+    torch_load_kwargs: Optional[Dict[str, Any]] = None,
+) -> tuple[nn.Module, Dict[str, Any]]:
+    """
+    Adapted from: https://github.com/MaastrichtU-CDS/anyBrainer/
+
+    Load (optionally a subset of) parameters from a checkpoint into a module,
+    with optional prefix-based key renaming.
+
+    Args:
+        model_instance: The module to load parameters into.
+        checkpoint_path: The path to the checkpoint file.
+        select_prefixes: A list of prefixes to select parameters from.
+        rename_map: A dictionary of old prefixes to new prefixes. 
+        strict: Whether to raise an error if there are missing or unexpected keys.
+        torch_load_kwargs: Additional keyword arguments to pass to `torch.load`.
+
+    Returns:
+        model_instance: The loaded module.
+        stats: A dictionary of statistics.
+    
+    Raises:
+        FileNotFoundError: if ``checkpoint_path`` does not exist.
+        TypeError: if the loaded checkpoint does not contain a dict-like state dict.
+    """
+    kw = torch_load_kwargs or {}
+    ckpt = torch.load(str(checkpoint_path), **kw)
+    state_dict = ckpt.get("state_dict", ckpt)
+    if not isinstance(state_dict, dict):
+        raise TypeError("No dict-like 'state_dict' in checkpoint.")
+
+    # selection
+    if select_prefixes:
+        if isinstance(select_prefixes, str):
+            select_prefixes = [select_prefixes]
+        selected = {k: v for k, v in state_dict.items() if any(k.startswith(p) for p in select_prefixes)}
+        ignored = [k for k in state_dict if k not in selected]
+    else:
+        selected = dict(state_dict)
+        ignored = []
+
+    # renaming
+    to_load = {}
+    if rename_map:
+        for k, v in selected.items():
+            new_k = k
+            for old, new in rename_map.items():
+                if k.startswith(old):
+                    new_k = new + k[len(old):]
+                    break
+            to_load[new_k] = v
+    else:
+        to_load = selected
+
+    result = model_instance.load_state_dict(to_load, strict=strict)
+    if hasattr(result, "missing_keys"):
+        missing_keys = list(result.missing_keys)
+        unexpected_keys = list(result.unexpected_keys)
+    elif isinstance(result, tuple) and len(result) == 2:
+        missing_keys, unexpected_keys = list(result[0]), list(result[1])
+    else:
+        missing_keys, unexpected_keys = [], []
+
+    stats = {
+        "loaded_keys": list(to_load.keys()),
+        "ignored_keys": ignored,
+        "missing_keys": missing_keys,
+        "unexpected_keys": unexpected_keys,
+    }
+    return model_instance, stats
+
+def split_decay_no_decay(
+    module: nn.Module,
+    *,
+    extra_no_decay_modules: Tuple[type, ...] = (),
+    extra_no_decay_names: Tuple[str, ...] = (),
+) -> Tuple[List[nn.Parameter], List[nn.Parameter]]:
+    """
+    Return (decay_params, no_decay_params) for AdamW-style grouping.
+
+    Rules:
+      - no decay: biases and affine params of normalization layers
+      - decay: everything else (Linear/Conv/Attention/MLP weights, patch/pos embeds, etc.)
+    You can extend "no decay" via `extra_no_decay_modules` or `extra_no_decay_names` 
+    (substring match on param name).
+    """
+    norm_types = (
+        nn.LayerNorm, nn.GroupNorm,
+        nn.InstanceNorm1d, nn.InstanceNorm2d, nn.InstanceNorm3d,
+        nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d, nn.SyncBatchNorm,
+    ) + tuple(extra_no_decay_modules)
+
+    decay, no_decay = [], []
+    seen: set = set()
+
+    for m in module.modules():
+        for name, p in m.named_parameters(recurse=False):
+            if p is None or not p.requires_grad:
+                continue
+            pid = id(p)
+            if pid in seen:
+                continue
+            seen.add(pid)
+
+            # biases -> no decay
+            if name.endswith("bias") or name == "bias":
+                no_decay.append(p)
+                continue
+
+            # norm affine params -> no decay
+            if isinstance(m, norm_types):
+                # LayerNorm/GroupNorm/InstanceNorm typically have weight/bias attributes
+                no_decay.append(p)
+                continue
+
+            # extra no-decay name patterns (substring match on local name)
+            if extra_no_decay_names and any(k in name for k in extra_no_decay_names):
+                no_decay.append(p)
+                continue
+
+            # default: decay
+            decay.append(p)
+
+    return decay, no_decay
