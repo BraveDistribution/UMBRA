@@ -38,7 +38,7 @@ class FinetuningDataset(Dataset[Dict[str, Any]]):
         ] = None,
         scan_type: Literal["numpy", "nifti"] = "numpy",
         modalities: Optional[Sequence[str]] = None,
-        target: Literal["label", "mask", "combined"] = "label",
+        target: Literal["label", "mask", "combined"] = "mask",
         require_all_labels: bool = True,
         require_all_scans: bool = False,
         stage: Literal["train", "val", "test", "predict"] = "train",
@@ -228,9 +228,9 @@ class FinetuningDataset(Dataset[Dict[str, Any]]):
             scans = [scans]
 
         # Convert scans to torch tensors and add to output list
-        for item in cast(List[Dict[str, Any]], scans):
+        for new_scans in cast(List[Dict[str, Any]], scans):
             new_entry: Dict[str, Any] = {}
-            for key, arr in item.items():
+            for key, arr in new_scans.items():
                 if isinstance(arr, np.ndarray):
                     # Cast explicitly; avoids surprises and ensures contiguous tensors
                     if key == "mask":
@@ -249,7 +249,7 @@ class FinetuningDataset(Dataset[Dict[str, Any]]):
 
             # Pass any metadata that’s not part of scans/label
             for key, value in entry.items():
-                if key not in scans and key != "label":
+                if key not in new_scans.keys() and key != "label":
                     new_entry[key] = value
 
             out.append(new_entry)

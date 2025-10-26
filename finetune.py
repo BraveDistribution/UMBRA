@@ -30,7 +30,7 @@ def train_and_evaluate_run(
     steps: int = 20000,
     input_size: Union[int, List[int]] = 96,
     scan_type: Literal["numpy", "nifti"] = "numpy",
-    batch_size: int = 8,
+    batch_size: int = 4,
     num_workers: int = 8,
     learning_rate: float = 5e-4,
     encoder_lr_ratio: float = 0.1,
@@ -98,7 +98,9 @@ def train_and_evaluate_run(
             keys=modalities,
             seg_key="mask",
             out_key="volume",
-            n_patches=4,
+            n_patches=2,
+            n_pos=1,
+            n_neg=1,
             val_mode=False,
         )
         val_transforms = get_segmentation_transforms(
@@ -106,7 +108,9 @@ def train_and_evaluate_run(
             keys=modalities,
             seg_key="mask",
             out_key="volume",
-            n_patches=4,
+            n_patches=2,
+            n_pos=1,
+            n_neg=1,
             val_mode=True,
         )
     
@@ -204,7 +208,7 @@ def experiment_loop(
     epochs: Optional[int] = None,
     steps: Optional[int] = 20000,
     num_workers: int = 8,
-    batch_size: int = 8,
+    batch_size: int = 4,
     accumulate_grad_batches: int = 1,
     input_size: int = 96,
     learning_rate: float = 5e-4,

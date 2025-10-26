@@ -195,9 +195,6 @@ class FinetuningModule(pl.LightningModule):
     def training_step(self, batch: dict, batch_idx: int):
         """Training step; computes loss and metrics."""
         out = self.model(batch[self.input_key])
-        print(batch[self.input_key].shape)
-        print(batch[self.target_key])
-        print(len(batch[self.target_key]))
         loss = self.loss_fn(out, batch[self.target_key])
         stats = self.compute_metrics(out, batch[self.target_key])
         stats["loss"] = loss.item()

@@ -26,7 +26,7 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
         val_transforms: Optional[Callable] = None,
         modalities: Optional[Sequence[str]] = None,
         scan_type: Literal["numpy", "nifti"] = "numpy",
-        target: Literal["label", "mask", "combined"] = "label",
+        target: Literal["label", "mask", "combined"] = "mask",
         require_all_labels: bool = True,
         require_all_scans: bool = False,
         # Testing
