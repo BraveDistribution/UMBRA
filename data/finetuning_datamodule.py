@@ -148,60 +148,30 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
         train_ids, val_ids, test_ids = self._get_train_val_test_ids()
 
         if stage == "fit":
-            self.train_dataset = FinetuningDataset(
-                data_dir=self.data_dir,
-                patients_included=train_ids,
-                labels_dir=self.labels_dir,
-                modalities=self.modalities,
-                scan_type=cast(Literal["numpy", "nifti"], self.scan_type),
-                target=cast(Literal["label", "mask", "combined"], self.target),
-                transforms=self.train_transforms,
-                require_all_labels=self.require_all_labels,
-                require_all_scans=self.require_all_scans,
-            )
+            self.train_ids = train_ids
+            self.val_ids = val_ids
         elif stage == "validate":
-            self.val_dataset = FinetuningDataset(
-            data_dir=self.data_dir,
-            patients_included=val_ids,
-            labels_dir=self.labels_dir,
-            modalities=self.modalities,
-            scan_type=cast(Literal["numpy", "nifti"], self.scan_type),
-            target=cast(Literal["label", "mask", "combined"], self.target),
-            transforms=self.val_transforms,
-            require_all_labels=self.require_all_labels,
-            require_all_scans=self.require_all_scans,
-        )
+            self.val_ids = val_ids
         elif stage == "test":
-            test_dir = self.data_dir if not self.test_dir else self.test_dir
-            included_ids = test_ids if not self.test_dir else None
-            self.test_dataset = FinetuningDataset(
-                data_dir=test_dir,
-                patients_included=included_ids,
-                labels_dir=self.test_labels_dir,
-                modalities=self.modalities,
-                scan_type=cast(Literal["numpy", "nifti"], self.scan_type),
-                target=cast(Literal["label", "mask", "combined"], self.target),
-                transforms=self.val_transforms,
-                require_all_labels=self.require_all_labels,
-                require_all_scans=self.require_all_scans,
-            )
-        else: # stage == "predict"
-            self.predict_dataset = FinetuningDataset(
-            data_dir=self.data_dir,
-            labels_dir=self.labels_dir,
-            modalities=self.modalities,
-            scan_type=cast(Literal["numpy", "nifti"], self.scan_type),
-            target=cast(Literal["label", "mask", "combined"], self.target),
-            transforms=self.val_transforms,
-            require_all_labels=self.require_all_labels,
-            require_all_scans=self.require_all_scans,
-        )
+            self.test_ids = test_ids
+        # Uses all data for 'predict'
     
     def train_dataloader(self):
-        if self.train_dataset is None:
+        if self.train_ids is None:
             raise ValueError(
-                "Train dataset not found. Make sure setup('fit') is called first."
+                "Train subjects not found. Make sure setup('fit') is called first."
             )
+        self.train_dataset = FinetuningDataset(
+            data_dir=self.data_dir,
+            patients_included=self.train_ids,
+            labels_dir=self.labels_dir,
+            modalities=self.modalities,
+            scan_type=cast(Literal["numpy", "nifti"], self.scan_type),
+            target=cast(Literal["label", "mask", "combined"], self.target),
+            transforms=self.train_transforms,
+            require_all_labels=self.require_all_labels,
+            require_all_scans=self.require_all_scans,
+        )
         return DataLoader(
             cast(Dataset, self.train_dataset), 
             batch_size=self.batch_size, 
@@ -211,10 +181,22 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
         )
 
     def val_dataloader(self):
-        if self.val_dataset is None:
+        if self.val_ids is None:
             raise ValueError(
-                "Validation dataset not found. Make sure setup('validate') is called first."
+                "Validation subjects not found. Make sure setup('validate') "
+                "or setup('fit') is called first."
             )
+        self.val_dataset = FinetuningDataset(
+            data_dir=self.data_dir,
+            patients_included=self.val_ids,
+            labels_dir=self.labels_dir,
+            modalities=self.modalities,
+            scan_type=cast(Literal["numpy", "nifti"], self.scan_type),
+            target=cast(Literal["label", "mask", "combined"], self.target),
+            transforms=self.val_transforms,
+            require_all_labels=self.require_all_labels,
+            require_all_scans=self.require_all_scans,
+        )
         return DataLoader(
             cast(Dataset, self.val_dataset), 
             batch_size=self.batch_size, 
@@ -224,10 +206,23 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
         )
     
     def test_dataloader(self):
-        if self.test_dataset is None:
+        if self.test_ids is None:
             raise ValueError(
-                "Test dataset not found. Make sure setup('test') is called first."
+                "Test subjects not found. Make sure setup('test') is called first."
             )
+        test_dir = self.data_dir if not self.test_dir else self.test_dir
+        included_ids = self.test_ids if not self.test_dir else None
+        self.test_dataset = FinetuningDataset(
+            data_dir=test_dir,
+            patients_included=included_ids,
+            labels_dir=self.test_labels_dir,
+            modalities=self.modalities,
+            scan_type=cast(Literal["numpy", "nifti"], self.scan_type),
+            target=cast(Literal["label", "mask", "combined"], self.target),
+            transforms=self.val_transforms,
+            require_all_labels=self.require_all_labels,
+            require_all_scans=self.require_all_scans,
+        )
         return DataLoader(
             cast(Dataset, self.test_dataset), 
             batch_size=self.batch_size, 
@@ -237,10 +232,16 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
         )
     
     def predict_dataloader(self):
-        if self.predict_dataset is None:
-            raise ValueError(
-                "Predict dataset not found. Make sure setup('predict') is called first."
-            )
+        self.predict_dataset = FinetuningDataset(
+            data_dir=self.data_dir,
+            labels_dir=self.labels_dir,
+            modalities=self.modalities,
+            scan_type=cast(Literal["numpy", "nifti"], self.scan_type),
+            target=cast(Literal["label", "mask", "combined"], self.target),
+            transforms=self.val_transforms,
+            require_all_labels=self.require_all_labels,
+            require_all_scans=self.require_all_scans,
+        )
         return DataLoader(
             cast(Dataset, self.predict_dataset), 
             batch_size=self.batch_size, 
