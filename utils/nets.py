@@ -199,13 +199,8 @@ def load_param_group_from_ckpt(
     else:
         missing_keys, unexpected_keys = [], []
 
-    print(f"to_load: {to_load.keys()}")
-    print(f"ignored: {ignored}")
-    print(f"missing_keys: {missing_keys}")
-    print(f"unexpected_keys: {unexpected_keys}")
-
     stats = {
-        "loaded_keys": list(to_load.keys()),
+        "attempted_keys": list(to_load.keys()),
         "ignored_keys": ignored,
         "missing_keys": missing_keys,
         "unexpected_keys": unexpected_keys,

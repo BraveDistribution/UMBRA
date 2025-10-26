@@ -5,6 +5,7 @@ from pathlib import Path
 import lightning.pytorch as pl
 from sklearn.model_selection import train_test_split
 from torch.utils.data   import DataLoader
+from torch.utils.data.dataset import Dataset
 
 from data.finetuning_dataset import FinetuningDataset
 from utils.data import sample_subjects
@@ -94,6 +95,12 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
         if not self.test_dir and self.train_test_split == 0:
             print("Warning: train_test_split is 0, so no test set will be created.")
 
+        # Will get populated in `setup()`
+        self.train_dataset: Optional[Dataset] = None
+        self.val_dataset: Optional[Dataset] = None
+        self.test_dataset: Optional[Dataset] = None
+        self.predict_dataset: Optional[Dataset] = None
+
     def _get_train_val_test_ids(self) -> Tuple[Set[str], Set[str], Set[str]]:
         """
         Get train/val/test patient IDs.
@@ -134,55 +141,54 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
         Get train/val/test/predict datasets.
         """
         train_ids, val_ids, test_ids = self._get_train_val_test_ids()
-        if stage == "train":
-            self.train_dataset = FinetuningDataset(
-                data_dir=self.data_dir,
-                patients_included=train_ids,
-                labels_dir=self.labels_dir,
-                modalities=self.modalities,
-                scan_type=cast(Literal["numpy", "nifti"], self.scan_type),
-                target=cast(Literal["label", "mask", "combined"], self.target),
-                transforms=self.train_transforms,
-                require_all_labels=self.require_all_labels,
-                require_all_scans=self.require_all_scans,
-            )
-        elif stage == "val":
-            self.val_dataset = FinetuningDataset(
-                data_dir=self.data_dir,
-                patients_included=val_ids,
-                labels_dir=self.labels_dir,
-                modalities=self.modalities,
-                scan_type=cast(Literal["numpy", "nifti"], self.scan_type),
-                target=cast(Literal["label", "mask", "combined"], self.target),
-                transforms=self.val_transforms,
-                require_all_labels=self.require_all_labels,
-                require_all_scans=self.require_all_scans,
-            )
-        elif stage == "test":
-            test_dir = self.data_dir if not self.test_dir else self.test_dir
-            included_ids = test_ids if not self.test_dir else None
-            self.test_dataset = FinetuningDataset(
-                data_dir=test_dir,
-                patients_included=included_ids,
-                labels_dir=self.test_labels_dir,
-                modalities=self.modalities,
-                scan_type=cast(Literal["numpy", "nifti"], self.scan_type),
-                target=cast(Literal["label", "mask", "combined"], self.target),
-                transforms=self.val_transforms,
-                require_all_labels=self.require_all_labels,
-                require_all_scans=self.require_all_scans,
-            )
-        else: # stage == "predict"; use all data
-            self.predict_dataset = FinetuningDataset(
-                data_dir=self.data_dir,
-                labels_dir=self.labels_dir,
-                modalities=self.modalities,
-                scan_type=cast(Literal["numpy", "nifti"], self.scan_type),
-                target=cast(Literal["label", "mask", "combined"], self.target),
-                transforms=self.val_transforms,
-                require_all_labels=self.require_all_labels,
-                require_all_scans=self.require_all_scans,
-            )
+        self.train_dataset = FinetuningDataset(
+            data_dir=self.data_dir,
+            patients_included=train_ids,
+            labels_dir=self.labels_dir,
+            modalities=self.modalities,
+            scan_type=cast(Literal["numpy", "nifti"], self.scan_type),
+            target=cast(Literal["label", "mask", "combined"], self.target),
+            transforms=self.train_transforms,
+            require_all_labels=self.require_all_labels,
+            require_all_scans=self.require_all_scans,
+        )
+
+        self.val_dataset = FinetuningDataset(
+            data_dir=self.data_dir,
+            patients_included=val_ids,
+            labels_dir=self.labels_dir,
+            modalities=self.modalities,
+            scan_type=cast(Literal["numpy", "nifti"], self.scan_type),
+            target=cast(Literal["label", "mask", "combined"], self.target),
+            transforms=self.val_transforms,
+            require_all_labels=self.require_all_labels,
+            require_all_scans=self.require_all_scans,
+        )
+
+        test_dir = self.data_dir if not self.test_dir else self.test_dir
+        included_ids = test_ids if not self.test_dir else None
+        self.test_dataset = FinetuningDataset(
+            data_dir=test_dir,
+            patients_included=included_ids,
+            labels_dir=self.test_labels_dir,
+            modalities=self.modalities,
+            scan_type=cast(Literal["numpy", "nifti"], self.scan_type),
+            target=cast(Literal["label", "mask", "combined"], self.target),
+            transforms=self.val_transforms,
+            require_all_labels=self.require_all_labels,
+            require_all_scans=self.require_all_scans,
+        )
+
+        self.predict_dataset = FinetuningDataset(
+            data_dir=self.data_dir,
+            labels_dir=self.labels_dir,
+            modalities=self.modalities,
+            scan_type=cast(Literal["numpy", "nifti"], self.scan_type),
+            target=cast(Literal["label", "mask", "combined"], self.target),
+            transforms=self.val_transforms,
+            require_all_labels=self.require_all_labels,
+            require_all_scans=self.require_all_scans,
+        )
     
     def train_dataloader(self):
         return DataLoader(

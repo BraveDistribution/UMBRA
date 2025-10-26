@@ -125,8 +125,8 @@ class FinetuningModule(pl.LightningModule):
         )
         print(f"Loaded pretrained weights from checkpoint "
                 f"{load_encoder_from}\n#### Summary ####"
-                f"\n- Loaded {len(stats['loaded_keys'])} parameters "
-                f"(from {len(stats['loaded_keys']) + len(stats['ignored_keys'])} parameters)"
+                f"\n- Attempted to load {len(stats['attempted_keys'])} parameters "
+                f"(from {len(stats['attempted_keys']) + len(stats['ignored_keys'])} parameters)"
                 f"\n- Unexpected {len(stats['unexpected_keys'])} parameters"
                 f"\n- Missing {len(stats['missing_keys'])} parameters\n")
 
