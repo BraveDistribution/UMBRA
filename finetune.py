@@ -318,7 +318,7 @@ def experiment_loop(
         raise ValueError("`name` must be a string or a sequence of strings")
     
     # encoder unfreezing
-    unfreeze_encoder_at_loop: List[Optional[Union[int, float]]]
+    unfreeze_encoder_at_loop: List[Union[int, float]]
     if isinstance(unfreeze_encoder_at, list):
         if len(unfreeze_encoder_at) != len(encoder_ckpt_loop):
             raise ValueError(
@@ -338,7 +338,7 @@ def experiment_loop(
         )
 
     # encoder learning rate ratio
-    encoder_lr_ratio_loop: List[Optional[float]]
+    encoder_lr_ratio_loop: List[float]
     if isinstance(encoder_lr_ratio, list):
         if len(encoder_lr_ratio) != len(encoder_ckpt_loop):
             raise ValueError("`encoder_lr_ratio` and `encoder_ckpts` must have the same length")
@@ -349,7 +349,7 @@ def experiment_loop(
         raise ValueError("`encoder_lr_ratio` must be a float or a sequence of floats")
 
     # encoder weight decay
-    encoder_wd_loop: List[Optional[float]]
+    encoder_wd_loop: List[float]
     if isinstance(encoder_wd, list):
         if len(encoder_wd) != len(encoder_ckpt_loop):
             raise ValueError("`encoder_wd` and `encoder_ckpts` must have the same length")
