@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Union, Literal, Sequence, Tuple, Set
+from typing import Callable, Optional, Union, Literal, Sequence, Tuple, Set, List
 from typing import cast
 from pathlib import Path
 
@@ -118,7 +118,9 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
         sub_ids = sorted(sub_ids)
 
         # Get test split
-        if not self.test_dir and self.train_test_split > 0:
+        train_val: List[str]
+        test: List[str]
+        if not self.test_dir and self.train_test_split > 0.0:
             train_val, test = train_test_split(
                 sub_ids, test_size=self.train_test_split, random_state=self.seed
             )
@@ -127,11 +129,13 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
             test = []
 
         # Extract subset of train/val if requested
-        if self.subset_train:
+        if self.subset_train and self.subset_train < 1.0:
             train_val, _ = sample_subjects(train_val, self.subset_train, self.seed)
 
         # Get train/val split
-        if self.train_val_split > 0:
+        train: List[str]
+        val: List[str]
+        if self.train_val_split > 0.0:
             train, val = train_test_split(
                     train_val, test_size=self.train_val_split, random_state=self.seed
                 )
