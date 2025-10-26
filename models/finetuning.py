@@ -117,11 +117,11 @@ class FinetuningModule(pl.LightningModule):
         encoder_prefix_in_ckpt: str = 'model.encoder'
     ) -> None:    
         self.model, stats = load_param_group_from_ckpt(
-            self.model.encoder, # type: ignore[attr-defined]
+            self.model, # type: ignore[attr-defined]
             checkpoint_path=Path(load_encoder_from),
             select_prefixes=encoder_prefix_in_ckpt,
-            rename_map={encoder_prefix_in_ckpt: 'encoder'},
-            strict=True,
+            rename_map={encoder_prefix_in_ckpt: ''},
+            strict=False,
         )
         print(f"Loaded pretrained weights from checkpoint "
                 f"{load_encoder_from}\n#### Summary ####"
