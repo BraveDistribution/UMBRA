@@ -48,7 +48,7 @@ class FinetuningModule(pl.LightningModule):
         wd_encoder: float = 1e-3,
         wd_rest: float = 1e-2,
         warmup: Union[int, float] = 0.05,
-        load_encoder_from: Optional[str] = None,
+        load_encoder_from: Optional[Union[Path, str]] = None,
         encoder_prefix_in_ckpt: str = 'model.encoder',
         unfreeze_encoder_at: Union[int, float] = 0.0,
         encoder_lr_ratio: float = 1.0,
@@ -113,7 +113,7 @@ class FinetuningModule(pl.LightningModule):
     
     def _load_encoder_from_ckpt(
         self, 
-        load_encoder_from: str, 
+        load_encoder_from: Union[Path, str], 
         encoder_prefix_in_ckpt: str = 'model.encoder'
     ) -> None:    
         self.model, stats = load_param_group_from_ckpt(
@@ -331,6 +331,13 @@ class FinetuningModule(pl.LightningModule):
 class SegmentationSwinFPN(FinetuningModule):
     """
     Finetuning module for segmentation tasks using Swin Transformer.
+
+    Uses MONAI's `DiceCELoss` for loss computation and `SlidingWindowInferer` for inference.
+    The post-processing is done using MONAI's `Compose` transform with `Activations` and 
+    `AsDiscrete` transforms. Performance is measured using Dice score, IoU score, Hausdorff distance,
+    and surface distance.
+
+    See `FinetuningModule` for more details, and `SwinMAE` for the encoder architecture and settings.
     """
     def __init__(
         self, 
@@ -351,21 +358,13 @@ class SegmentationSwinFPN(FinetuningModule):
         learning_rate: float = 1e-4,
         min_lr: float = 1e-5,
         warmup: Union[int, float] = 0.05,
-        load_encoder_from: Optional[str] = None,
+        load_encoder_from: Optional[Union[Path, str]] = None,
         encoder_prefix_in_ckpt: str = 'model.encoder',
         unfreeze_encoder_at: Union[int, float] = 0.0,
         encoder_lr_ratio: float = 1.0,
         input_key: str = "volume",
         target_key: str = "label",
     ):  
-        """
-        Args:
-            in_channels: Number of input channels
-            patch_size: Patch size
-            depths: Depth of the model
-            num_heads: Number of heads
-            window_size: Window size
-        """
         model = SwinMAE(
             in_channels=in_channels,
             patch_size=patch_size,

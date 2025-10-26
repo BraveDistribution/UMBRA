@@ -45,6 +45,7 @@ from transforms.unit import (
     ClipNonzeroPercentilesd,
 )
 
+
 def get_mae_transforms(
     keys: Sequence[str] = ("volume",),
     input_size: Union[int, Sequence[int]] = 96,
@@ -277,13 +278,13 @@ def load_nifti(
 def get_segmentation_transforms(
     input_size: Union[int, Sequence[int]] = 96,
     keys: Sequence[str] = ("volume",),
-    seg_key: str = "seg",
+    seg_key: str = "mask",
     out_key: str = "volume",
     n_patches: int = 4,
     n_pos: int = 1,
     n_neg: int = 2,
     val_mode: bool = False,
-    allow_missing_keys: bool = True,
+    allow_missing_keys: bool = False,
 ) -> Compose:
     """
     IO transforms + augmentations for segmentation tasks.
