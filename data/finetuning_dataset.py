@@ -227,7 +227,7 @@ class FinetuningDataset(Dataset[Dict[str, Any]]):
         if not isinstance(scans, list):
             scans = [scans]
 
-        print(f"scans: {scans}")
+        print(f"scans: {scans}", flush=True)
 
         # Convert scans to torch tensors
         for new_entry in cast(List[Dict[str, Any]], scans):
