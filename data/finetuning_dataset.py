@@ -82,11 +82,11 @@ class FinetuningDataset(Dataset[Dict[str, Any]]):
             set(modalities) if require_all_scans and modalities else set()
         )
         if require_all_labels and self.target == "label":
-            self.required_label_keys = set("label")
+            self.required_label_keys = set(["label"])
         elif require_all_labels and self.target == "mask":
-            self.required_label_keys = set("mask")
+            self.required_label_keys = set(["mask"])
         elif require_all_labels and self.target == "combined":
-            self.required_label_keys = set(("label", "mask"))
+            self.required_label_keys = set(["label", "mask"])
         else:
             self.required_label_keys = set()
 

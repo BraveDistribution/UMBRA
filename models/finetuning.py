@@ -120,7 +120,7 @@ class FinetuningModule(pl.LightningModule):
             self.model, # type: ignore[attr-defined]
             checkpoint_path=Path(load_encoder_from),
             select_prefixes=encoder_prefix_in_ckpt,
-            rename_map={encoder_prefix_in_ckpt: ''},
+            rename_map={encoder_prefix_in_ckpt: 'encoder'},
             strict=False,
         )
         print(f"Loaded pretrained weights from checkpoint "
