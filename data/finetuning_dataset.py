@@ -227,11 +227,10 @@ class FinetuningDataset(Dataset[Dict[str, Any]]):
         if not isinstance(scans, list):
             scans = [scans]
 
-        print(f"scans: {scans}", flush=True)
-
-        # Convert scans to torch tensors
-        for new_entry in cast(List[Dict[str, Any]], scans):
-            for key, arr in new_entry.items():
+        # Convert scans to torch tensors and add to output list
+        for item in cast(List[Dict[str, Any]], scans):
+            new_entry: Dict[str, Any] = {}
+            for key, arr in item.items():
                 if isinstance(arr, np.ndarray):
                     # Cast explicitly; avoids surprises and ensures contiguous tensors
                     if key == "mask":
@@ -241,9 +240,8 @@ class FinetuningDataset(Dataset[Dict[str, Any]]):
                 elif isinstance(arr, torch.Tensor):
                     # If it’s a MetaTensor, convert to plain tensor when available
                     new_entry[key] = arr.as_tensor() if hasattr(arr, "as_tensor") else arr # type: ignore[hasAttribute]
-                else:
-                    # Fallback: convert to tensor
-                    new_entry[key] = torch.as_tensor(arr)
+                # Skips other types (e.g., lists, strings, etc.) that could have been added during transforms;
+                # unless in the original metadata.
 
             # Load label from label.txt (int/float)
             if "label" in entry:
