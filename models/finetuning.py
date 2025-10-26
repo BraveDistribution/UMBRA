@@ -105,6 +105,8 @@ class FinetuningModule(pl.LightningModule):
             postprocess if postprocess is not None 
             else cast(Callable[[torch.Tensor], torch.Tensor], Identity())
         )
+        # Will get populated in `configure_optimizers()`
+        self._unfreeze_encoder_at: Optional[int] = None
 
         # Type hints for PyTorch Lightning attributes
         self.trainer: Optional[Any]
@@ -130,6 +132,30 @@ class FinetuningModule(pl.LightningModule):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
+        
+    def on_fit_start(self) -> None:
+        """Freeze encoder parameters if requested."""
+        if self._unfreeze_encoder_at is None:
+            raise RuntimeError(
+                "Unfreeze encoder step must be set before calling `on_fit_start()`; "
+                "should be populated in `configure_optimizers()`"
+            )
+        if self._unfreeze_encoder_at > 0:
+            for p in self.model.encoder.parameters(): # type: ignore[attr-defined]
+                p.requires_grad = False
+            print(f"Freezing encoder parameters until step {self._unfreeze_encoder_at}.")
+    
+    def on_train_batch_start(self, batch, batch_idx: int) -> None:
+        """Unfreeze encoder parameters at the specified step."""
+        if self._unfreeze_encoder_at is None:
+            raise RuntimeError(
+                "Unfreeze encoder step must be set before calling `on_train_batch_start()`; "
+                "should be populated in `configure_optimizers()`"
+            )
+        if self._unfreeze_encoder_at > 0 and self.global_step >= self._unfreeze_encoder_at:
+            for p in self.model.encoder.parameters(): # type: ignore[attr-defined]
+                p.requires_grad = True
+            print(f"Encoder unfrozen at step {self.global_step}.")
     
     @torch.no_grad()
     def compute_metrics(self, out: torch.Tensor, target: torch.Tensor) -> dict[str, Any]:
@@ -140,6 +166,7 @@ class FinetuningModule(pl.LightningModule):
                 val = metric(out, target)
             except Exception:
                 print(f"Failed to compute metric {name}; skipping.")
+                continue
 
             # Support for MONAI's aggregated metrics
             if isinstance(metric, CumulativeIterationMetric):
@@ -167,7 +194,7 @@ class FinetuningModule(pl.LightningModule):
 
     def training_step(self, batch: dict, batch_idx: int):
         """Training step; computes loss and metrics."""
-        out = self.model(batch["img"])
+        out = self.model(batch[self.input_key])
         loss = self.loss_fn(out, batch[self.target_key])
         stats = self.compute_metrics(out, batch[self.target_key])
         stats["loss"] = loss.item()
@@ -213,16 +240,15 @@ class FinetuningModule(pl.LightningModule):
             int(num_training_steps * self.warmup) if isinstance(self.warmup, float) 
             else self.warmup
         )
-
         # Get unfreeze steps
-        unfreeze_step: int = (
+        self._unfreeze_encoder_at = (
             int(num_training_steps * self.unfreeze_encoder_at) 
             if isinstance(self.unfreeze_encoder_at, float) 
             else self.unfreeze_encoder_at
         )
         # Unfreeze warmup steps are scaled to remaining number of steps
         unfreeze_warmup_steps: int = int(
-            (num_warmup_steps / num_training_steps) * (num_training_steps - unfreeze_step)
+            (num_warmup_steps / num_training_steps) * (num_training_steps - self._unfreeze_encoder_at)
         )
 
         # Build optimizer and scheduler
@@ -235,13 +261,12 @@ class FinetuningModule(pl.LightningModule):
                 num_warmup_steps, num_warmup_steps
             ),
             total_iters=num_training_steps,
-            start_iter=(unfreeze_step, unfreeze_step, 0, 0),
+            start_iter=(self._unfreeze_encoder_at, self._unfreeze_encoder_at, 0, 0),
             eta_min=(
                 self.min_lr*self.encoder_lr_ratio, self.min_lr*self.encoder_lr_ratio, 
                 self.min_lr, self.min_lr
             ),
         )
-
         return {
             "optimizer": optimizer,
             "lr_scheduler": {
@@ -303,7 +328,7 @@ class FinetuningModule(pl.LightningModule):
         ]
             
 
-class FinetuneSegmentationSwinFPN(FinetuningModule):
+class SegmentationSwinFPN(FinetuningModule):
     """
     Finetuning module for segmentation tasks using Swin Transformer.
     """
@@ -389,6 +414,3 @@ class FinetuneSegmentationSwinFPN(FinetuningModule):
             inferer=inferer, 
             postprocess=postprocess,
         )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.model(x)
