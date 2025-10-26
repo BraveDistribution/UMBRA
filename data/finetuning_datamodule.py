@@ -191,9 +191,8 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
                 "Validation subjects not found. Make sure setup('validate') "
                 "or setup('fit') is called first."
             )
-        # If no validation IDs, return None to skip validation
-        if len(self.val_ids) == 0:
-            return None
+        # avoid CUDA errors in worker processes
+        num_workers = 0 if len(self.val_ids) == 0 else self.num_workers
 
         self.val_dataset = FinetuningDataset(
             data_dir=self.data_dir,
@@ -211,7 +210,7 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
             cast(Dataset, self.val_dataset), 
             batch_size=self.batch_size, 
             shuffle=False, 
-            num_workers=self.num_workers, 
+            num_workers=num_workers, 
             collate_fn=list_data_collate,
         )
     
@@ -220,10 +219,9 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
             raise ValueError(
                 "Test subjects not found. Make sure setup('test') is called first."
             )
-        # If no test IDs, return None to skip test
-        if len(self.test_ids) == 0:
-            return None
-        
+        # avoid CUDA errors in worker processes
+        num_workers = 0 if len(self.test_ids) == 0 else self.num_workers
+
         test_dir = self.data_dir if not self.test_dir else self.test_dir
         included_ids = self.test_ids if not self.test_dir else None
         self.test_dataset = FinetuningDataset(
