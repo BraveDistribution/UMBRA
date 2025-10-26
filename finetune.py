@@ -51,6 +51,10 @@ def train_and_evaluate_run(
     - Subset of the train data to use
     - Pretrained checkpoint (if provided)
 
+    For the current experiments, it is assumed that all test data is in a separate held-out directory.
+    Also, no hyperparameter tuning or validation monitoring is performed; so `train_val_split` is fixed
+    to 0.0 to use all data for training. 
+
     Args:
         data_dir:                 Directory containing training data
         finetuning_task:          Task to finetune; only segmentation for now.
@@ -124,7 +128,7 @@ def train_and_evaluate_run(
             require_all_labels=True,
             require_all_scans=True,
             test_dir=test_dir,
-            train_val_split=0.2,
+            train_val_split=0.0,
             subset_train=subset_train,
             batch_size=batch_size,
             num_workers=num_workers,
