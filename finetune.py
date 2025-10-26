@@ -177,6 +177,7 @@ def train_and_evaluate_run(
         gradient_clip_algorithm="norm",
         strategy=DDPStrategy(find_unused_parameters=True),
         fast_dev_run=fast_dev_run,
+        limit_val_batches=0, # disabled validation; see docstring
         **overrides,
     )
 
