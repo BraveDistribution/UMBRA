@@ -41,7 +41,7 @@ class FinetuningDataset(Dataset[Dict[str, Any]]):
         target: Literal["label", "mask", "combined"] = "mask",
         require_all_labels: bool = True,
         require_all_scans: bool = False,
-        stage: Literal["train", "val", "test", "predict"] = "train",
+        stage: Literal["fit", "validate", "test", "predict"] = "fit",
     ) -> None:
         """
         Args:
@@ -61,7 +61,7 @@ class FinetuningDataset(Dataset[Dict[str, Any]]):
                     Gets a `label.txt` file as a label and a `mask.*` file as a label
             require_all_labels: Skip session if a label is missing
             require_all_scans: Skip session if a scan is missing
-            stage: Stage that dataset is being used for (train, val, test, predict);
+            stage: Stage that dataset is being used for (fit, validate, test, predict);
                 useful for logging.
         """
         self.data_dir: Path = Path(data_dir)
@@ -73,7 +73,7 @@ class FinetuningDataset(Dataset[Dict[str, Any]]):
             [Union[Dict[str, NDArray], Dict[str, torch.Tensor]]], 
             Union[Dict[str, NDArray], Dict[str, torch.Tensor]]]
         ] = transforms
-        if stage not in ("train", "val", "test", "predict"):
+        if stage not in ("fit", "validate", "test", "predict"):
             raise ValueError(f"Invalid stage: {stage}")
         self.stage = stage
 

@@ -189,7 +189,7 @@ def train_and_evaluate_run(
         trainer.test(model, datamodule=data_module)
 
     print(f"Finetuning completed for experiment: {experiment_name}.")
-
+    
     wandb.finish()
 
 

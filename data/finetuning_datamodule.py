@@ -171,6 +171,7 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
             transforms=self.train_transforms,
             require_all_labels=self.require_all_labels,
             require_all_scans=self.require_all_scans,
+            stage="fit",
         )
         return DataLoader(
             cast(Dataset, self.train_dataset), 
@@ -196,6 +197,7 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
             transforms=self.val_transforms,
             require_all_labels=self.require_all_labels,
             require_all_scans=self.require_all_scans,
+            stage="validate",
         )
         return DataLoader(
             cast(Dataset, self.val_dataset), 
@@ -222,6 +224,7 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
             transforms=self.val_transforms,
             require_all_labels=self.require_all_labels,
             require_all_scans=self.require_all_scans,
+            stage="test",
         )
         return DataLoader(
             cast(Dataset, self.test_dataset), 
@@ -241,6 +244,7 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
             transforms=self.val_transforms,
             require_all_labels=self.require_all_labels,
             require_all_scans=self.require_all_scans,
+            stage="predict",
         )
         return DataLoader(
             cast(Dataset, self.predict_dataset), 
