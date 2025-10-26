@@ -6,6 +6,7 @@ import lightning.pytorch as pl
 from sklearn.model_selection import train_test_split
 from torch.utils.data   import DataLoader
 from torch.utils.data.dataset import Dataset
+from monai.data.utils import list_data_collate
 
 from data.finetuning_dataset import FinetuningDataset
 from utils.data import sample_subjects
@@ -192,32 +193,36 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
     
     def train_dataloader(self):
         return DataLoader(
-            self.train_dataset, 
+            cast(Dataset, self.train_dataset), 
             batch_size=self.batch_size, 
             shuffle=True, 
             num_workers=self.num_workers, 
+            collate_fn=list_data_collate,
         )
 
     def val_dataloader(self):
         return DataLoader(
-            self.val_dataset, 
+            cast(Dataset, self.val_dataset), 
             batch_size=self.batch_size, 
             shuffle=False, 
             num_workers=self.num_workers, 
+            collate_fn=list_data_collate,
         )
     
     def test_dataloader(self):
         return DataLoader(
-            self.test_dataset, 
+            cast(Dataset, self.test_dataset), 
             batch_size=self.batch_size, 
             shuffle=False, 
             num_workers=self.num_workers, 
+            collate_fn=list_data_collate,
         )
     
     def predict_dataloader(self):
         return DataLoader(
-            self.predict_dataset, 
+            cast(Dataset, self.predict_dataset), 
             batch_size=self.batch_size, 
             shuffle=False, 
             num_workers=self.num_workers, 
+            collate_fn=list_data_collate,
         )

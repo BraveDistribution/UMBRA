@@ -187,7 +187,7 @@ class FinetuningDataset(Dataset[Dict[str, Any]]):
     def __len__(self) -> int:
         return len(self.data_entries)
 
-    def __getitem__(self, idx: int) -> Dict[str, Any]:
+    def __getitem__(self, idx: int) -> List[Dict[str, Any]]:
         """
         Loads one sample:
         - all scan volumes (except 'mask') as float32
@@ -195,13 +195,16 @@ class FinetuningDataset(Dataset[Dict[str, Any]]):
         - optional 'label' from label.txt (int/float)
         - passes through any metadata in self.not_scan_keys
         - applies self.transforms on the scans dict (if provided)
-        - returns everything as torch tensors (scans + mask), metadata unchanged
+        - returns a list of dictionaries, each containing all scans as
+          torch tensors (including masks), the label and any metadata.
+
+        Use with MONAI's `list_data_collate` collate function for batching. 
         """
         entry = self.data_entries[idx]
-        out: Dict[str, Any] = {}
+        out: List[Dict[str, Any]] = []
 
         # Scans-only dict for loading data and applying transforms
-        scans: Dict[str, Any] = {
+        scans: Union[List[Dict[str, Any]], Dict[str, Any]] = {
             k: v for k, v in entry.items() if k not in self.not_scan_keys
         }
         if self.scan_type == "nifti":
@@ -219,28 +222,37 @@ class FinetuningDataset(Dataset[Dict[str, Any]]):
         if self.transforms is not None:
             scans = self.transforms(scans)
 
+        # scans could be converted to list during transforms (e.g., multiple crops)
+        # always convert to list for consistency, and let MONAI's `list_data_collate` handle collation. 
+        if not isinstance(scans, list):
+            scans = [scans]
+
         # Convert scans to torch tensors
-        for key, arr in scans.items():
-            if isinstance(arr, np.ndarray):
-                # Cast explicitly; avoids surprises and ensures contiguous tensors
-                if key == "mask":
-                    out[key] = torch.as_tensor(arr, dtype=torch.uint8)
+        for new_scan_entry in cast(List[Dict[str, Any]], scans):
+            new_entry: Dict[str, Any] = {}
+            for key, arr in new_scan_entry.items():
+                if isinstance(arr, np.ndarray):
+                    # Cast explicitly; avoids surprises and ensures contiguous tensors
+                    if key == "mask":
+                        new_entry[key] = torch.as_tensor(arr, dtype=torch.uint8)
+                    else:
+                        new_entry[key] = torch.as_tensor(arr, dtype=torch.float32)
+                elif isinstance(arr, torch.Tensor):
+                    # If it’s a MetaTensor, convert to plain tensor when available
+                    new_entry[key] = arr.as_tensor() if hasattr(arr, "as_tensor") else arr # type: ignore[hasAttribute]
                 else:
-                    out[key] = torch.as_tensor(arr, dtype=torch.float32)
-            elif isinstance(arr, torch.Tensor):
-                # If it’s a MetaTensor, convert to plain tensor when available
-                out[key] = arr.as_tensor() if hasattr(arr, "as_tensor") else arr # type: ignore[hasAttribute]
-            else:
-                # Fallback: convert to tensor
-                out[key] = torch.as_tensor(arr)
+                    # Fallback: convert to tensor
+                    new_entry[key] = torch.as_tensor(arr)
 
-        # Load label from label.txt (int/float)
-        if "label" in entry:
-            out["label"] = load_label(entry["label"])
+            # Load label from label.txt (int/float)
+            if "label" in entry:
+                new_entry["label"] = load_label(entry["label"])
 
-        # Pass any metadata that’s not part of scans/label
-        for key, value in entry.items():
-            if key not in scans and key != "label":
-                out[key] = value
+            # Pass any metadata that’s not part of scans/label
+            for key, value in entry.items():
+                if key not in scans and key != "label":
+                    new_entry[key] = value
+
+            out.append(new_entry)
 
         return out
