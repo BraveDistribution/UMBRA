@@ -27,8 +27,6 @@ from monai.metrics import (
 from models.networks import SwinMAE
 from models.schedulers import CosineAnnealingWithWarmup
 from utils.nets import load_param_group_from_ckpt, split_decay_no_decay
-from utils.misc import sync_dist_safe
-
 
 class FinetuningModule(pl.LightningModule):
     """
@@ -190,7 +188,7 @@ class FinetuningModule(pl.LightningModule):
         on_step = stage == "train"
         self.log_dict({f"{stage}/{k}": v for k, v in log_dict.items()}, 
                       on_step=on_step, on_epoch=True, prog_bar=False, 
-                      sync_dist=sync_dist_safe(self))
+                      sync_dist=True)
 
     def training_step(self, batch: dict, batch_idx: int):
         """Training step; computes loss and metrics."""
