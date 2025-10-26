@@ -121,7 +121,7 @@ class FinetuningDataset(Dataset[Dict[str, Any]]):
                 continue
 
             patient_id = patient_dir.name.replace("sub_", "")
-            if self.patients_included and patient_id not in self.patients_included:
+            if self.patients_included is not None and patient_id not in self.patients_included:
                 continue
 
             for session_dir in patient_dir.iterdir():
