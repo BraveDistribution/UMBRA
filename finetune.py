@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Union, Optional, Literal, List
+from typing import Optional, Union, Literal, List
 
 import lightning.pytorch as pl
 from fire import Fire
@@ -328,7 +328,7 @@ def experiment_loop(
                     "`unfreeze_encoder_at` must be an integer/float or a sequence of integers/floats"
                 )
     elif isinstance(unfreeze_encoder_at, (int, float)):
-        unfreeze_encoder_at_loop = [int(unfreeze_encoder_at)] * len(encoder_ckpt_loop)
+        unfreeze_encoder_at_loop = [unfreeze_encoder_at] * len(encoder_ckpt_loop)
     else:
         raise ValueError(
             "`unfreeze_encoder_at` must be an integer/float or a sequence of integers/floats"

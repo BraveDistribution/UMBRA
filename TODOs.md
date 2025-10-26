@@ -2,6 +2,7 @@
 
 ## Code
 1. Logging
+2. Test experiment loop
 
 ## Comments
 1. Mae dataset + datamodule: violates separation of concerns:
