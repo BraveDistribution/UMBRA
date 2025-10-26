@@ -203,7 +203,7 @@ class FinetuningDataset(Dataset[Dict[str, Any]]):
         entry = self.data_entries[idx]
         out: List[Dict[str, Any]] = []
 
-        # Scans-only dict for loading data and applying transforms
+        # scans-only dict for loading data and applying transforms
         scans: Union[List[Dict[str, Any]], Dict[str, Any]] = {
             k: v for k, v in entry.items() if k not in self.not_scan_keys
         }
