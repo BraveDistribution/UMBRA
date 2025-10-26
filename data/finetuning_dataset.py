@@ -227,10 +227,11 @@ class FinetuningDataset(Dataset[Dict[str, Any]]):
         if not isinstance(scans, list):
             scans = [scans]
 
+        print(f"scans: {scans}")
+
         # Convert scans to torch tensors
-        for new_scan_entry in cast(List[Dict[str, Any]], scans):
-            new_entry: Dict[str, Any] = {}
-            for key, arr in new_scan_entry.items():
+        for new_entry in cast(List[Dict[str, Any]], scans):
+            for key, arr in new_entry.items():
                 if isinstance(arr, np.ndarray):
                     # Cast explicitly; avoids surprises and ensures contiguous tensors
                     if key == "mask":
