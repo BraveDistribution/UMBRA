@@ -118,7 +118,7 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
         sub_ids = sorted(sub_ids)
 
         # Get test split
-        if not self.test_dir:
+        if not self.test_dir and self.train_test_split > 0:
             train_val, test = train_test_split(
                 sub_ids, test_size=self.train_test_split, random_state=self.seed
             )
@@ -131,9 +131,13 @@ class FinetuningDataModule(pl.LightningDataModule):  # type: ignore
             train_val, _ = sample_subjects(train_val, self.subset_train, self.seed)
 
         # Get train/val split
-        train, val = train_test_split(
-            train_val, test_size=self.train_val_split, random_state=self.seed
-        )
+        if self.train_val_split > 0:
+            train, val = train_test_split(
+                    train_val, test_size=self.train_val_split, random_state=self.seed
+                )
+        else:
+            train = train_val
+            val = []
 
         return set(train), set(val), set(test)
 
