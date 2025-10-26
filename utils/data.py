@@ -108,7 +108,7 @@ def sample_subjects(
     Returns:
         (selected, remaining): Tuple of two lists.
     """
-    if not (0 < ratio < 1):
+    if not (0 <= ratio <= 1):
         raise ValueError(f"ratio must be between 0 and 1, got {ratio}")
 
     rng = random.Random(seed)
