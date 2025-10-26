@@ -285,7 +285,14 @@ def experiment_loop(
     elif isinstance(modalities, str):
         mod_loop = [[modalities]]
     elif isinstance(modalities, list):
-        mod_loop = [list(mod) for mod in modalities]
+        mod_loop = []
+        for mod in modalities:
+            if isinstance(mod, str):
+                mod_loop.append([mod])  # Wrap string in list
+            elif isinstance(mod, list):
+                mod_loop.append(mod)    # Keep list as is
+            else:
+                raise ValueError(f"Invalid modality type: {type(mod)}")
     else:
         raise ValueError("`modalities` must be a string or a sequence of strings")
     
