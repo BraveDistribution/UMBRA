@@ -94,7 +94,7 @@ def train_and_evaluate_run(
         project="FinetuningFOMO25",
         name=experiment_name,
         entity="matejgazda-technical-university-of-kosice",
-        log_model=True,
+        log_model=False,
     )
 
     # Set random seed
