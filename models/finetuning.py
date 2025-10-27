@@ -394,7 +394,7 @@ class SegmentationSwinFPN(FinetuningModule):
             # Adjustments for MONAI's `SwinUNETR` API
             patch_size = patch_size if isinstance(patch_size, int) else patch_size[0]
             extra_swin_kwargs = extra_swin_kwargs or {}
-            encoder_name_in_model = 'SwinViT'
+            encoder_name_in_model = 'swinViT'
             model = SwinUNETR(
                 in_channels=in_channels,
                 out_channels=1,
