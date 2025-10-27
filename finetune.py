@@ -26,6 +26,7 @@ def train_and_evaluate_run(
     model_checkpoint_dir: Union[str, Path] = "checkpoints",
     load_encoder_from: Optional[Union[str, Path]] = None,
     unfreeze_encoder_at: Union[int, float] = 0.3,
+    use_swinunetr: bool = False,
     epochs: Optional[int] = None,
     steps: int = 20000,
     input_size: Union[int, List[int]] = 96,
@@ -69,6 +70,8 @@ def train_and_evaluate_run(
         model_checkpoint_dir:     Directory to save model checkpoints
         load_encoder_from:        Optional path to checkpoint to load encoder from
         unfreeze_encoder_at:      Step or fraction of total steps at which to unfreeze encoder.
+        use_swinunetr:            Whether to use the SwinUNETR as the architecture; otherwise a custom
+                                    Swin (`SwinMAE`) is used with group-norm and a lightweight FPN decoder. 
         epochs:                   Maximum number of epochs to train
         steps:                    Maximum number of steps to train
         input_size:               Input image dimensions
@@ -150,7 +153,7 @@ def train_and_evaluate_run(
             wd_rest=weight_decay,
             input_key="volume",
             target_key="mask",
-            decoder="unet",
+            use_swinunetr=use_swinunetr,
         )
     else:
         raise ValueError(f"Invalid finetuning task: {finetuning_task}")
@@ -222,6 +225,7 @@ def experiment_loop(
     input_size: int = 96,
     learning_rate: float = 5e-4,
     weight_decay: float = 1e-2,
+    use_swinunetr: bool = False,
     finetuning_task: Literal["segmentation"] = "segmentation",
     scan_type: Literal["numpy", "nifti"] = "numpy",
     target: Literal["label", "mask", "combined"] = "mask",
@@ -253,6 +257,8 @@ def experiment_loop(
         unfreeze_encoder_at:      Step or fraction of total steps at which to unfreeze encoder
         learning_rate:            Maximum learning rate for training
         encoder_lr_ratio:         Learning rate ratio for encoder relative to decoder
+        use_swinunetr:            Whether to use the SwinUNETR as the architecture; otherwise a custom
+                                    Swin (`SwinMAE`) is used with group-norm and a lightweight FPN decoder. 
         resume_from_checkpoint:   Optional path(s) to checkpoint(s) to resume from
         epochs:                   Maximum number of epochs to train
         steps:                    Maximum number of steps to train
@@ -434,6 +440,7 @@ def experiment_loop(
                     model_checkpoint_dir=save_dir,
                     load_encoder_from=load_encoder_from,
                     unfreeze_encoder_at=unfreeze_encoder_at_loop[i],
+                    use_swinunetr=use_swinunetr,
                     epochs=max_epochs,
                     steps=max_steps,
                     input_size=input_size,

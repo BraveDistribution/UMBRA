@@ -351,7 +351,6 @@ class SegmentationSwinFPN(FinetuningModule):
         use_checkpoint: bool = True,
         extra_swin_kwargs: Optional[Dict[str, Any]] = None,
         gn_groups: int = 8,
-        decoder: Literal["fpn", "unet"] = "fpn",
         fpn_width: int = 32,
         image_size: Union[int, Sequence[int]] = 96,
         learning_rate: float = 5e-4,
@@ -365,8 +364,9 @@ class SegmentationSwinFPN(FinetuningModule):
         unfreeze_encoder_at: Union[int, float] = 0.0,
         input_key: str = "volume",
         target_key: str = "label",
+        use_swinunetr: bool = False,
     ):  
-        if decoder == "fpn":
+        if use_swinunetr:
             model = SwinMAE(
                 in_channels=in_channels,
                 patch_size=patch_size,
@@ -380,7 +380,7 @@ class SegmentationSwinFPN(FinetuningModule):
                 gn_groups=gn_groups,
                 width=fpn_width,
             )
-        elif decoder == "unet":
+        else:
             # Adjustments for MONAI's `SwinUNETR` API
             patch_size = patch_size if isinstance(patch_size, int) else patch_size[0]
             extra_swin_kwargs = extra_swin_kwargs or {}
@@ -396,8 +396,6 @@ class SegmentationSwinFPN(FinetuningModule):
                 use_checkpoint=use_checkpoint,
                 **extra_swin_kwargs,
             )
-        else:
-            raise ValueError(f"Invalid decoder: {decoder}")
 
         loss_fn = DiceCELoss(sigmoid=True)
         metrics = {
