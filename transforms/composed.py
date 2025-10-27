@@ -284,6 +284,7 @@ def get_segmentation_transforms(
     n_pos: int = 1,
     n_neg: int = 2,
     val_mode: bool = False,
+    overfit_mode: bool = False,
     allow_missing_keys: bool = False,
 ) -> Compose:
     """
@@ -298,6 +299,7 @@ def get_segmentation_transforms(
         n_pos: Relative weight of positive crops (i.e., containing the mask).
         n_neg: Relative weight of negative crops (i.e., not containing the mask).
         val_mode: Whether to use for validation; no augmentations are applied.
+        overfit_mode: Whether to use for overfitting; no augmentations are applied.
         allow_missing_keys: Whether to allow missing keys.
     """
     # Standardize inputs
@@ -312,7 +314,7 @@ def get_segmentation_transforms(
     pad_mode_spatial = ['edge'] * len(keys) + ['constant']
     interp_mode = ['bilinear'] * len(keys) + ['nearest']
 
-    if not val_mode:
+    if not val_mode and not overfit_mode:
         # Spatial augmentations
         transforms.extend([
             RandFlipd(keys=all_keys, spatial_axis=0, prob=0.5, 
@@ -360,6 +362,8 @@ def get_segmentation_transforms(
                     allow_missing_keys=allow_missing_keys),
     ])
     if not val_mode:
+        n_pos = 1 if overfit_mode else n_pos
+        n_neg = 0 if overfit_mode else n_neg
         transforms.extend([
             RandCropByPosNegLabeld(keys=all_keys, label_key=seg_key, 
                                    spatial_size=input_size, 
