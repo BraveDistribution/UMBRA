@@ -302,17 +302,18 @@ def get_segmentation_transforms(
         overfit_mode: Whether to use for overfitting; no augmentations are applied.
         allow_missing_keys: Whether to allow missing keys.
     """
-    # Standardize inputs
-    transforms = [
-        ToTensord(keys=keys, track_meta=False),
-        EnsureChannelFirstd(keys=keys, channel_dim=0),
-    ]
 
     # Padding and interpolation modes for images and segmentation mask
     all_keys = [*keys, seg_key]
     pad_mode_affine =  ['border'] * len(keys) + ['constant']
     pad_mode_spatial = ['edge'] * len(keys) + ['constant']
     interp_mode = ['bilinear'] * len(keys) + ['nearest']
+
+    # Standardize inputs
+    transforms = [
+        ToTensord(keys=all_keys, track_meta=False),
+        EnsureChannelFirstd(keys=all_keys, channel_dim=0),
+    ]
 
     if not val_mode and not overfit_mode:
         # Spatial augmentations
