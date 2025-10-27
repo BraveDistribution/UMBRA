@@ -424,7 +424,7 @@ def experiment_loop(
                 else:
                     name_str = str(i)
                 
-                loop_experiment_name = f"{finetuning_task}_{mod_str}_{few_shot_str}_{name_str}"
+                loop_experiment_name = f"{experiment_name}_{mod_str}_{few_shot_str}_{name_str}"
 
                 save_dir: Union[str, Path] = Path(model_checkpoint_dir) / loop_experiment_name
 
