@@ -182,7 +182,7 @@ def train_and_evaluate_run(
         log_every_n_steps=10,
         gradient_clip_val=2,
         gradient_clip_algorithm="norm",
-        strategy=DDPStrategy(find_unused_parameters=True),
+        strategy="auto",
         fast_dev_run=fast_dev_run,
         limit_val_batches=0, # disabled validation; see docstring
         **overrides,
