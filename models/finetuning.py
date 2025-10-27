@@ -157,7 +157,7 @@ class FinetuningModule(pl.LightningModule):
                 "should be populated in `configure_optimizers()`"
             )
         encoder = getattr(self.model, self.encoder_name_in_model)
-        if self._unfreeze_encoder_at > 0 and self.global_step >= self._unfreeze_encoder_at:
+        if self._unfreeze_encoder_at > 0 and self.global_step == self._unfreeze_encoder_at:
             for p in encoder.parameters():
                 p.requires_grad = True
             print(f"Encoder unfrozen at step {self.global_step}.")
