@@ -424,15 +424,15 @@ def experiment_loop(
                 else:
                     name_str = str(i)
                 
-                experiment_name = f"{finetuning_task}_{mod_str}_{few_shot_str}_{name_str}"
+                loop_experiment_name = f"{finetuning_task}_{mod_str}_{few_shot_str}_{name_str}"
 
-                save_dir: Union[str, Path] = Path(model_checkpoint_dir) / experiment_name
+                save_dir: Union[str, Path] = Path(model_checkpoint_dir) / loop_experiment_name
 
                 # Train and evaluate
                 train_and_evaluate_run(
                     data_dir=data_dir,
                     finetuning_task=finetuning_task,
-                    experiment_name=experiment_name,
+                    experiment_name=loop_experiment_name,
                     modalities=mod,
                     test_dir=test_dir,
                     target=target,
