@@ -40,6 +40,7 @@ def train_and_evaluate_run(
     resume_from_checkpoint: Optional[Union[str, Path]] = None,
     num_checkpoints: int = 1,
     fast_dev_run: Union[bool, int] = False,
+    overfit_mode: bool = False,
     do_test: bool = True,
     seed: int = 42,
     **overrides
@@ -82,6 +83,7 @@ def train_and_evaluate_run(
         resume_from_checkpoint:   Optional path to checkpoint to resume from
         num_checkpoints:          Number of intermediate checkpoints to save per training run
         fast_dev_run:             Quick debugging run
+        overfit_mode:             Whether to use for overfitting; no augmentations + sampling 5% of data.
         seed:                     Random seed for reproducibility
         **overrides:              Additional keyword arguments for `pl.Trainer`
     """
@@ -106,6 +108,7 @@ def train_and_evaluate_run(
             n_pos=1,
             n_neg=1,
             val_mode=False,
+            overfit_mode=overfit_mode,
         )
         val_transforms = get_segmentation_transforms(
             input_size=input_size,
@@ -224,6 +227,7 @@ def experiment_loop(
     model_checkpoint_dir: Union[str, Path] = "checkpoints",
     num_checkpoints: int = 1,
     fast_dev_run: Union[bool, int] = False,
+    overfit_mode: bool = False,
     do_test: bool = True,
     seed: int = 42,
     **overrides
@@ -261,6 +265,7 @@ def experiment_loop(
         model_checkpoint_dir:     Directory to save model checkpoints
         num_checkpoints:          Number of intermediate checkpoints to save per training run
         fast_dev_run:             Quick debugging run
+        overfit_mode:             Whether to use for overfitting; no augmentations + sampling 5% of data.
         do_test:                  Whether to run test evaluation after training
         seed:                     Random seed for reproducibility
         **overrides:              Additional keyword arguments for `pl.Trainer`
@@ -299,7 +304,9 @@ def experiment_loop(
     
     # Set up subset train loop
     few_shot_loop: List[Optional[float]]
-    if isinstance(subset_train, type(None)):
+    if overfit_mode:
+        few_shot_loop = [0.05]
+    elif isinstance(subset_train, type(None)):
         few_shot_loop = [None]
     elif isinstance(subset_train, float):
         few_shot_loop = [subset_train]
@@ -440,6 +447,7 @@ def experiment_loop(
                     resume_from_checkpoint=resume_from_checkpoint_loop[i],
                     num_checkpoints=num_checkpoints,
                     fast_dev_run=fast_dev_run,
+                    overfit_mode=overfit_mode,
                     do_test=do_test,
                     seed=seed,
                     **overrides,
