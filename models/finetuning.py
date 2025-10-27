@@ -366,7 +366,7 @@ class SegmentationSwinFPN(FinetuningModule):
         target_key: str = "label",
         use_swinunetr: bool = False,
     ):  
-        if use_swinunetr:
+        if not use_swinunetr:
             model = SwinMAE(
                 in_channels=in_channels,
                 patch_size=patch_size,
