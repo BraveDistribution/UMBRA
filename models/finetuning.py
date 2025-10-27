@@ -49,6 +49,7 @@ class FinetuningModule(pl.LightningModule):
         warmup: Union[int, float] = 0.05,
         load_encoder_from: Optional[Union[Path, str]] = None,
         encoder_prefix_in_ckpt: str = 'model.encoder',
+        encoder_name_in_model: str = 'encoder',
         unfreeze_encoder_at: Union[int, float] = 0.0,
         encoder_lr_ratio: float = 1.0,
         input_key: str = "volume",
@@ -69,6 +70,7 @@ class FinetuningModule(pl.LightningModule):
             wd_rest: Weight decay for remaining parameters
             load_encoder_from: Path to checkpoint to load encoder from
             encoder_prefix_in_ckpt: Where to find the encoder in the checkpoint (e.g., 'model.encoder')
+            encoder_name_in_model: Name of the encoder in the model (e.g., 'encoder')
             unfreeze_encoder_at: Step or fraction of total steps at which to unfreeze encoder.
             encoder_lr_ratio: Ratio of learning rate for the encoder; use 1.0 for equal learning rates.
             input_key: Key of the input in the batch
@@ -79,10 +81,11 @@ class FinetuningModule(pl.LightningModule):
         self.save_hyperparameters()
 
         self.model: nn.Module = model
-        if not hasattr(self.model, 'encoder'):
+        self.encoder_name_in_model: str = encoder_name_in_model
+        if not hasattr(self.model, self.encoder_name_in_model):
             raise ValueError(
                 "Cannot infer encoder from model, which is required for finetuning; "
-                "ensure model has an `encoder` attribute."
+                f"ensure model has an `{self.encoder_name_in_model}` attribute."
             )
         if load_encoder_from:
             self._load_encoder_from_ckpt(load_encoder_from, encoder_prefix_in_ckpt)
@@ -113,13 +116,14 @@ class FinetuningModule(pl.LightningModule):
     def _load_encoder_from_ckpt(
         self, 
         load_encoder_from: Union[Path, str], 
-        encoder_prefix_in_ckpt: str = 'model.encoder'
+        encoder_prefix_in_ckpt: str = 'model.encoder',
+        encoder_name_in_model: str = 'encoder',
     ) -> None:    
         self.model, stats = load_param_group_from_ckpt(
             self.model, # type: ignore[attr-defined]
             checkpoint_path=Path(load_encoder_from),
             select_prefixes=encoder_prefix_in_ckpt,
-            rename_map={encoder_prefix_in_ckpt: 'encoder'},
+            rename_map={encoder_prefix_in_ckpt: encoder_name_in_model},
             strict=False,
         )
         print(f"Loaded pretrained weights from checkpoint "
@@ -139,8 +143,9 @@ class FinetuningModule(pl.LightningModule):
                 "Unfreeze encoder step must be set before calling `on_fit_start()`; "
                 "should be populated in `configure_optimizers()`"
             )
+        encoder = getattr(self.model, self.encoder_name_in_model)
         if self._unfreeze_encoder_at > 0:
-            for p in self.model.encoder.parameters(): # type: ignore[attr-defined]
+            for p in encoder.parameters():
                 p.requires_grad = False
             print(f"Freezing encoder parameters until step {self._unfreeze_encoder_at}.")
     
@@ -151,8 +156,9 @@ class FinetuningModule(pl.LightningModule):
                 "Unfreeze encoder step must be set before calling `on_train_batch_start()`; "
                 "should be populated in `configure_optimizers()`"
             )
+        encoder = getattr(self.model, self.encoder_name_in_model)
         if self._unfreeze_encoder_at > 0 and self.global_step >= self._unfreeze_encoder_at:
-            for p in self.model.encoder.parameters(): # type: ignore[attr-defined]
+            for p in encoder.parameters():
                 p.requires_grad = True
             print(f"Encoder unfrozen at step {self.global_step}.")
     
@@ -284,16 +290,19 @@ class FinetuningModule(pl.LightningModule):
         decay_ids = {id(p) for p in decay_params}
         nodecay_ids = {id(p) for p in no_decay_params}
 
+        # Get encoder
+        encoder = getattr(self.model, self.encoder_name_in_model)
+
         # Identify encoder parameters; regardless of requires_grad -> allows later unfreezing
-        enc_param_ids = {id(p) for p in self.model.encoder.parameters()} # type: ignore[attr-defined]
+        enc_param_ids = {id(p) for p in encoder.parameters()}
 
         # Encoder groups
         encoder_decay_params = [
-            p for p in self.model.encoder.parameters() # type: ignore[attr-defined]
+            p for p in encoder.parameters()
             if id(p) in decay_ids
         ]
         encoder_no_decay_params = [
-            p for p in self.model.encoder.parameters() # type: ignore[attr-defined]
+            p for p in encoder.parameters()
             if id(p) in nodecay_ids
         ]
 
@@ -367,6 +376,7 @@ class SegmentationSwinFPN(FinetuningModule):
         use_swinunetr: bool = False,
     ):  
         if not use_swinunetr:
+            encoder_name_in_model = 'SwinViT'
             model = SwinMAE(
                 in_channels=in_channels,
                 patch_size=patch_size,
@@ -384,6 +394,7 @@ class SegmentationSwinFPN(FinetuningModule):
             # Adjustments for MONAI's `SwinUNETR` API
             patch_size = patch_size if isinstance(patch_size, int) else patch_size[0]
             extra_swin_kwargs = extra_swin_kwargs or {}
+            encoder_name_in_model = 'encoder'
             model = SwinUNETR(
                 in_channels=in_channels,
                 out_channels=1,
@@ -423,6 +434,7 @@ class SegmentationSwinFPN(FinetuningModule):
             warmup=warmup, 
             load_encoder_from=load_encoder_from, 
             encoder_prefix_in_ckpt=encoder_prefix_in_ckpt, 
+            encoder_name_in_model=encoder_name_in_model,
             unfreeze_encoder_at=unfreeze_encoder_at, 
             encoder_lr_ratio=encoder_lr_ratio, 
             wd_encoder=wd_encoder,
