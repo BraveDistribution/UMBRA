@@ -150,6 +150,7 @@ def train_and_evaluate_run(
             wd_rest=weight_decay,
             input_key="volume",
             target_key="mask",
+            decoder="unet",
         )
     else:
         raise ValueError(f"Invalid finetuning task: {finetuning_task}")

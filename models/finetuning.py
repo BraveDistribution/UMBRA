@@ -15,6 +15,7 @@ from monai.transforms import Compose, Activations, AsDiscrete
 from monai.transforms.utility.array import Identity
 from monai.inferers.inferer import SimpleInferer, SlidingWindowInferer
 from monai.losses.dice import DiceCELoss
+from monai.networks.nets import SwinUNETR
 # pyright: reportPrivateImportUsage=false
 from monai.metrics import (
     CumulativeIterationMetric,
@@ -347,11 +348,11 @@ class SegmentationSwinFPN(FinetuningModule):
         window_size: Union[Sequence[int], int] = 7,
         feature_size: int = 48,
         use_v2: bool = True,
-        spatial_dims: int = 3,
         use_checkpoint: bool = True,
         extra_swin_kwargs: Optional[Dict[str, Any]] = None,
         gn_groups: int = 8,
-        width: int = 32,
+        decoder: Literal["fpn", "unet"] = "fpn",
+        fpn_width: int = 32,
         image_size: Union[int, Sequence[int]] = 96,
         learning_rate: float = 5e-4,
         encoder_lr_ratio: float = 0.1,
@@ -365,20 +366,38 @@ class SegmentationSwinFPN(FinetuningModule):
         input_key: str = "volume",
         target_key: str = "label",
     ):  
-        model = SwinMAE(
-            in_channels=in_channels,
-            patch_size=patch_size,
-            depths=depths,
-            num_heads=num_heads,
-            window_size=window_size,
-            feature_size=feature_size,
-            use_v2=use_v2,
-            use_checkpoint=use_checkpoint,
-            spatial_dims=spatial_dims,
-            extra_swin_kwargs=extra_swin_kwargs,
-            gn_groups=gn_groups,
-            width=width,
-        )
+        if decoder == "fpn":
+            model = SwinMAE(
+                in_channels=in_channels,
+                patch_size=patch_size,
+                depths=depths,
+                num_heads=num_heads,
+                window_size=window_size,
+                feature_size=feature_size,
+                use_v2=use_v2,
+                use_checkpoint=use_checkpoint,
+                extra_swin_kwargs=extra_swin_kwargs,
+                gn_groups=gn_groups,
+                width=fpn_width,
+            )
+        elif decoder == "unet":
+            # Adjustments for MONAI's `SwinUNETR` API
+            patch_size = patch_size if isinstance(patch_size, int) else patch_size[0]
+            extra_swin_kwargs = extra_swin_kwargs or {}
+            model = SwinUNETR(
+                in_channels=in_channels,
+                out_channels=1,
+                feature_size=feature_size,
+                depths=depths,
+                num_heads=num_heads,
+                window_size=window_size,
+                patch_size=patch_size,
+                use_v2=use_v2,
+                use_checkpoint=use_checkpoint,
+                **extra_swin_kwargs,
+            )
+        else:
+            raise ValueError(f"Invalid decoder: {decoder}")
 
         loss_fn = DiceCELoss(sigmoid=True)
         metrics = {
