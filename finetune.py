@@ -168,7 +168,7 @@ def train_and_evaluate_run(
     )
 
     # Set float32 matmul precision to high for better performance
-    torch.set_float32_matmul_precision("medium")
+    torch.set_float32_matmul_precision("high")
 
     print("Starting training...")
     trainer = pl.Trainer(
