@@ -414,7 +414,7 @@ class SegmentationSwinFPN(FinetuningModule):
         metrics = {
             "dice": DiceMetric(),
             "iou": MeanIoU(),
-            "hausdorff": HausdorffDistanceMetric(),
+            "hausdorff": HausdorffDistanceMetric(percentile=0.95),
             "surface_distance": SurfaceDistanceMetric(),
         }
         inferer = cast(Callable[[torch.Tensor, nn.Module], torch.Tensor], 
