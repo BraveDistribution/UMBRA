@@ -13,6 +13,7 @@ __all__ = [
 
 from typing import Sequence, Union, Literal, Optional
 
+import torch
 # pyright: reportPrivateImportUsage=false
 from monai.transforms import (
     CenterSpatialCropd,
@@ -311,7 +312,8 @@ def get_segmentation_transforms(
 
     # Standardize inputs
     transforms = [
-        ToTensord(keys=all_keys, track_meta=False),
+        ToTensord(keys=keys, dtype=torch.float32, track_meta=False),
+        ToTensord(keys=seg_key, dtype=torch.uint8, track_meta=False),
         EnsureChannelFirstd(keys=all_keys, channel_dim=0),
     ]
 
