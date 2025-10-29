@@ -134,17 +134,30 @@ def extract_embeddings(
             patient_id = batch.get('patient', f'unknown_{batch_idx}')
             session_id = batch.get('session', 'unknown')
 
-            # Convert to string if tensor
+            # Convert to string (handle tensor, list, or string)
             if torch.is_tensor(patient_id):
                 patient_id = str(patient_id.item())
+            elif isinstance(patient_id, list):
+                patient_id = str(patient_id[0]) if len(patient_id) > 0 else f'unknown_{batch_idx}'
+            else:
+                patient_id = str(patient_id)
+
             if torch.is_tensor(session_id):
                 session_id = str(session_id.item())
+            elif isinstance(session_id, list):
+                session_id = str(session_id[0]) if len(session_id) > 0 else 'unknown'
+            else:
+                session_id = str(session_id)
 
             # Extract modality from path
             path1 = batch.get('path1', '')
-            if path1:
-                filename = Path(path1).name if isinstance(path1, str) else 'unknown'
-                modality = Path(path1).stem if isinstance(path1, str) else 'unknown'
+            # Handle if path1 is a list
+            if isinstance(path1, list):
+                path1 = path1[0] if len(path1) > 0 else ''
+
+            if path1 and isinstance(path1, str):
+                filename = Path(path1).name
+                modality = Path(path1).stem
                 # Remove numeric suffixes like t1_2 -> t1
                 modality = re.sub(r'_\d+$', '', modality)
             else:
