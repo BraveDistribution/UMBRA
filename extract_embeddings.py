@@ -125,19 +125,15 @@ def extract_embeddings(
     all_patient_ids = []
     all_session_ids = []
 
+    # Access dataset pairs directly to get file paths
+    dataset = val_loader.dataset
+
     with torch.no_grad():
         for batch_idx, batch in enumerate(tqdm(val_loader, desc='Extracting', unit='sample', total=total_samples)):
-            # Debug: print batch keys on first iteration
-            if batch_idx == 0:
-                print(f"\nDEBUG - Batch keys: {batch.keys()}")
-                print(f"DEBUG - Type of patient: {type(batch.get('patient'))}")
-                print(f"DEBUG - Value of patient: {batch.get('patient')}")
-                print(f"DEBUG - Type of path1: {type(batch.get('path1'))}")
-
             # Get volume from batch
             volume = batch['vol1'].to(device)
 
-            # Get metadata
+            # Get metadata from batch
             patient_id = batch.get('patient', f'unknown_{batch_idx}')
             session_id = batch.get('session', 'unknown')
 
@@ -156,17 +152,18 @@ def extract_embeddings(
             else:
                 session_id = str(session_id)
 
-            # Extract modality from path
-            path1 = batch.get('path1', '')
-            # Handle if path1 is a list
-            if isinstance(path1, list):
-                path1 = path1[0] if len(path1) > 0 else ''
-
-            if path1 and isinstance(path1, str):
-                filename = Path(path1).name
-                modality = Path(path1).stem
-                # Remove numeric suffixes like t1_2 -> t1
-                modality = re.sub(r'_\d+$', '', modality)
+            # Extract modality from dataset's internal pairs list
+            if hasattr(dataset, 'pairs') and batch_idx < len(dataset.pairs):
+                pair_info = dataset.pairs[batch_idx]
+                path1 = pair_info.get('path1', '')
+                if path1:
+                    filename = Path(path1).name
+                    modality = Path(path1).stem
+                    # Remove numeric suffixes like t1_2 -> t1
+                    modality = re.sub(r'_\d+$', '', modality)
+                else:
+                    filename = f'sample_{batch_idx}.npy'
+                    modality = 'unknown'
             else:
                 filename = f'sample_{batch_idx}.npy'
                 modality = 'unknown'
