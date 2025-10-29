@@ -127,6 +127,13 @@ def extract_embeddings(
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(tqdm(val_loader, desc='Extracting', unit='sample', total=total_samples)):
+            # Debug: print batch keys on first iteration
+            if batch_idx == 0:
+                print(f"\nDEBUG - Batch keys: {batch.keys()}")
+                print(f"DEBUG - Type of patient: {type(batch.get('patient'))}")
+                print(f"DEBUG - Value of patient: {batch.get('patient')}")
+                print(f"DEBUG - Type of path1: {type(batch.get('path1'))}")
+
             # Get volume from batch
             volume = batch['vol1'].to(device)
 
