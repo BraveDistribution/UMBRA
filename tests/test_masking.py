@@ -11,6 +11,7 @@ import numpy as np
 import torch.nn.functional as F
 from monai.transforms.utility.dictionary import ToNumpyd
 from monai.networks.blocks.patchembedding import PatchEmbed
+from monai.transforms.compose import Compose
 
 from utils.masking import generate_random_mask_conv, up_to_voxel_space
 from utils.visualization import plot_npy_volumes
@@ -24,6 +25,7 @@ from models.networks import (
     SwinEncoderMAE,
     SwinMAE,
 )
+from transforms.composed import get_mae_transforms
 
 
 def generate_random_4d_volume(shape):
@@ -205,8 +207,17 @@ class TestMaskGeneration:
             volume = load_volume("tests/examples/t1.npy")
         except FileNotFoundError:
             volume = generate_random_4d_volume((1, 110, 103, 112))
+
+        transforms: Compose = get_mae_transforms(
+            keys=("volume",),
+            input_size=(96, 96, 96),
+            val_mode=False,
+        ).set_random_state(22)
+
+        transformed = cast(Dict, transforms({"volume": volume}))
+
         mask = generate_random_mask_conv(
-            input_size=volume.shape[-3:],
+            input_size=transformed["volume"].shape[-3:],
             patch_size=(2, 2, 2),
             num_downsamples=4,
             batch_size=1,
@@ -214,14 +225,15 @@ class TestMaskGeneration:
             return_kind="grid",
         )
         mask_voxel = up_to_voxel_space(
-            mask, volume.shape[-3:], (2, 2, 2)
+            mask, transformed["volume"].shape[-3:], (2, 2, 2)
         )
         dict_data: Dict = {
-            "original": volume,
+            "original": transformed["volume"],
             "mask_voxel": mask_voxel.squeeze(0),
+            "masked_volume": transformed["volume"] * ~mask_voxel.squeeze(0),
+            "recon": transformed["volume_recon"],
         }
         dict_data = ToNumpyd(keys=list(dict_data.keys()))(dict_data)
-        dict_data["masked_volume"] = dict_data["original"] * ~dict_data["mask_voxel"]
         plot_npy_volumes(dict_data)
         assert True
 

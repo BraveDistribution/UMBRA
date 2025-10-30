@@ -42,9 +42,9 @@ class TestTransformShapes:
             input_size=(96, 96, 96),
             val_mode=False 
         )
-        result = transforms(
+        result = cast(Dict, transforms(
             {"volume": generate_random_4d_volume(input_size)}
-        )
+        ))
         assert result["volume"].shape == (1, 96, 96, 96)
         assert result["volume_recon"].shape == (1, 96, 96, 96)
 
@@ -65,10 +65,10 @@ class TestTransformShapes:
             val_mode=False,
             recon=True,
         )
-        result = transforms({
+        result = cast(Dict, transforms({
             "vol1": generate_random_4d_volume(vol_1),
             "vol2": generate_random_4d_volume(vol_2),
-        })
+        }))
         assert result["vol1"].shape == (1, 96, 96, 96)
         assert result["vol2"].shape == (1, 96, 96, 96)
         assert result["vol1_recon"].shape == (1, 96, 96, 96)
@@ -87,13 +87,22 @@ class TestVisualizeTransforms:
             volume = generate_random_4d_volume((1, 110, 103, 112))
         return volume
 
+    @pytest.fixture
+    def vol_2(self):
+        """Load example volume."""
+        try:
+            vol_2 = load_volume("tests/examples/dwi.npy")
+        except FileNotFoundError:
+            vol_2 = generate_random_4d_volume((1, 110, 103, 112))
+        return vol_2
+
     def test_mae_train_transforms(self, volume):
         """Visualize MAE training transforms."""
         transforms: Compose = get_mae_transforms(
             keys=("volume",),
             input_size=(96, 96, 96),
             val_mode=False,
-        ).set_random_state(42)
+        ).set_random_state(22)
 
         convert_to_numpy = ToNumpyd(keys=("volume", "volume_recon"))
 
@@ -130,7 +139,7 @@ class TestVisualizeTransforms:
         )
         assert True
     
-    def test_contrastive_train_transforms(self, volume):
+    def test_contrastive_train_transforms(self, volume, vol_2):
         """Visualize contrastive training transforms."""
         transforms: Compose = get_contrastive_transforms(
             keys=("vol1", "vol2"),
@@ -138,11 +147,11 @@ class TestVisualizeTransforms:
             conservative_mode=True,
             val_mode=False,
             recon=True,
-        ).set_random_state(42)
+        ).set_random_state(22)
 
         convert_to_numpy = ToNumpyd(keys=("vol1", "vol2", "vol1_recon", "vol2_recon"))
 
-        result = cast(Dict, transforms({"vol1": volume, "vol2": volume}))
+        result = cast(Dict, transforms({"vol1": volume, "vol2": vol_2}))
         result = cast(Dict[str, np.ndarray], convert_to_numpy(result))
         plot_npy_volumes({
             "original": volume, 
@@ -155,7 +164,7 @@ class TestVisualizeTransforms:
         )
         assert True
     
-    def test_contrastive_val_transforms(self, volume):
+    def test_contrastive_val_transforms(self, volume, vol_2):
         """Visualize contrastive validation transforms."""
         transforms: Compose = get_contrastive_transforms(
             keys=("vol1", "vol2"),
@@ -166,7 +175,7 @@ class TestVisualizeTransforms:
 
         convert_to_numpy = ToNumpyd(keys=("vol1", "vol2", "vol1_recon", "vol2_recon"))
 
-        result = cast(Dict, transforms({"vol1": volume, "vol2": volume}))
+        result = cast(Dict, transforms({"vol1": volume, "vol2": vol_2}))
         result = cast(Dict[str, np.ndarray], convert_to_numpy(result))
         plot_npy_volumes({
             "original": volume, 
