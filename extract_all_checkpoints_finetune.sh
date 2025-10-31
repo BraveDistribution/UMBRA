@@ -5,17 +5,17 @@
 # This is ONLY safe because ISLES was NOT included in the pretraining data.
 
 # Configuration
-DATA_DIR="/home/mgazda/data/isles"  # UPDATE THIS PATH to your ISLES dataset location
-OUTPUT_BASE="/home/mgazda/Projects/UMBRA/embeddings_analysis_finetune"
+DATA_DIR="/home/mg873uh/data/Petros/isles"  # UPDATE THIS PATH to your ISLES dataset location
+OUTPUT_BASE="/home/mg873uh/data/Petros/isles_embeddings"
 SEED=42
 MODALITIES="dwi flair adc"  # ISLES modalities
 SPLIT="full"  # Extract from full dataset (safe with pretrained checkpoints)
 
 # Checkpoint paths (pretrained, NOT finetuned)
-CHECKPOINT_MCL="/home/mgazda/data/Petros/ckpts/contrastive_modality-step=200000.ckpt"
-CHECKPOINT_CL="/home/mgazda/data/Petros/ckpts/contrastive_regular-step=200000.ckpt"
-CHECKPOINT_MAE_MCL="/home/mgazda/data/Petros/ckpts/combined_modality-step=200000.ckpt"
-CHECKPOINT_MAE_CL="/home/mgazda/data/Petros/ckpts/combined_regular-step=200000.ckpt"
+CHECKPOINT_MCL="/home/mg873uh/data/Petros/ckpts/contrastive_modality-step=200000.ckpt"
+CHECKPOINT_CL="/home/mg873uh/data/Petros/ckpts/contrastive_regular-step=200000.ckpt"
+CHECKPOINT_MAE_MCL="/home/mg873uh/data/Petros/ckpts/combined_modality-step=200000.ckpt"
+CHECKPOINT_MAE_CL="/home/mg873uh/data/Petros/ckpts/combined_regular-step=200000.ckpt"
 
 # Verify data directory exists
 if [ ! -d "$DATA_DIR" ]; then
