@@ -59,6 +59,8 @@ def extract_embeddings(
     """
     Extract 768-dim embeddings from finetuning dataset.
 
+    Extracts embeddings for EACH modality separately (model expects 1 channel input).
+
     Args:
         checkpoint_path: Path to PRETRAINED model checkpoint (NOT finetuned)
         data_dir: Path to finetuning data directory (hierarchical structure)
@@ -70,7 +72,7 @@ def extract_embeddings(
         device: Device to run on (default: 'cuda')
 
     Returns:
-        embeddings: Tensor of shape (N, 768)
+        embeddings: Tensor of shape (N_total, 768) where N_total = N_samples * N_modalities
         metadata: DataFrame with columns [filename, embedding_index, modality, patient_id, session_id]
     """
     device_obj = torch.device(device if torch.cuda.is_available() else 'cpu')
@@ -100,203 +102,215 @@ def extract_embeddings(
     model.eval()
     print(f"✓ Model moved to {device_obj} and set to eval mode")
 
-    # Create validation transforms (deterministic, no augmentation)
-    val_transforms = get_segmentation_transforms(
-        input_size=input_size,
-        keys=modalities,
-        seg_key="mask",
-        out_key="volume",  # Combines modalities into single volume
-        n_patches=1,  # Single patch (full volume)
-        n_pos=0,
-        n_neg=0,
-        val_mode=True,  # No augmentations
-    )
+    # Will collect embeddings from all modalities
+    all_embeddings_global = []
+    all_metadata_global = []
 
-    # Create data module
     print(f"\n{'='*80}")
-    print(f"STEP 2/4: LOADING DATASET")
+    print(f"STEP 2/4: PROCESSING MODALITIES")
     print(f"{'='*80}")
     print(f"Data directory: {data_dir}")
     print(f"Test directory: {test_dir if test_dir else 'None (using train/test split)'}")
-    print(f"Modalities: {modalities}")
+    print(f"Modalities to process: {modalities}")
     print(f"Split: {split}")
     print(f"Seed: {seed} (for data splits)")
-
-    # Configure splits based on extraction mode
-    if split == "full":
-        print("\n⚠️  FULL DATASET MODE:")
-        print("  - Extracting from ALL data (no train/val/test split)")
-        print("  - This is ONLY safe if using a pretrained checkpoint")
-        print("  - Ensure the finetuning dataset was NOT in pretraining data!")
-        train_val_split = 0.0
-        train_test_split = 0.0
-        actual_test_dir = None
-    elif split == "test":
-        train_val_split = 0.0
-        train_test_split = 0.2 if not test_dir else 0.0
-        actual_test_dir = test_dir
-    elif split == "val":
-        train_val_split = 0.2
-        train_test_split = 0.2 if not test_dir else 0.0
-        actual_test_dir = test_dir
-    elif split == "train":
-        train_val_split = 0.2
-        train_test_split = 0.2 if not test_dir else 0.0
-        actual_test_dir = test_dir
-    else:
-        raise ValueError(f"Invalid split: {split}")
-
-    data_module = FinetuningDataModule(
-        data_dir=str(data_dir),
-        train_transforms=val_transforms,
-        val_transforms=val_transforms,
-        modalities=modalities,
-        scan_type="numpy",
-        target="mask",
-        require_all_labels=False,  # Don't require masks for embedding extraction
-        require_all_scans=True,   # Require all modalities
-        test_dir=str(actual_test_dir) if actual_test_dir else None,
-        train_val_split=train_val_split,
-        train_test_split=train_test_split,
-        batch_size=1,
-        num_workers=0,
-        seed=seed,
-    )
-
-    # Setup and get appropriate dataloader
-    if split == "full":
-        data_module.setup('predict')
-        loader = data_module.predict_dataloader()
-        dataset_name = "full dataset"
-    elif split == "test":
-        data_module.setup('test')
-        loader = data_module.test_dataloader()
-        dataset_name = "test set"
-    elif split == "val":
-        data_module.setup('fit')
-        loader = data_module.val_dataloader()
-        dataset_name = "validation set"
-    elif split == "train":
-        data_module.setup('fit')
-        loader = data_module.train_dataloader()
-        dataset_name = "training set"
-
-    print(f"✓ Dataset size: {len(loader.dataset)} samples")
-    print(f"✓ Extracting from: {dataset_name}")
-
-    # Extract embeddings
-    total_samples = len(loader.dataset)
-    print(f"\n{'='*80}")
-    print(f"STEP 3/4: EXTRACTING EMBEDDINGS")
-    print(f"{'='*80}")
-    print(f"Total samples to process: {total_samples}")
-    print(f"Batch size: 1")
-    print(f"Device: {device_obj}")
-    print(f"Embedding dimension: 768")
+    print(f"")
+    print(f"NOTE: Processing each modality separately (model expects 1 channel)")
     print(f"{'='*80}\n")
 
-    all_embeddings = []
-    all_filenames = []
-    all_modalities = []
-    all_patient_ids = []
-    all_session_ids = []
+    # Process each modality separately
+    for modality_idx, modality_name in enumerate(modalities):
+        print(f"\n{'─'*80}")
+        print(f"Processing modality {modality_idx + 1}/{len(modalities)}: {modality_name.upper()}")
+        print(f"{'─'*80}\n")
 
-    # Access dataset to get metadata
-    dataset = loader.dataset
+        # Create validation transforms for SINGLE modality
+        val_transforms = get_segmentation_transforms(
+            input_size=input_size,
+            keys=[modality_name],  # Single modality only!
+            seg_key="mask",
+            out_key="volume",
+            n_patches=1,
+            n_pos=0,
+            n_neg=0,
+            val_mode=True,
+        )
 
-    with torch.no_grad():
-        for batch_idx, batch_list in enumerate(tqdm(loader, desc='Extracting', unit='sample', total=total_samples)):
-            # MONAI's list_data_collate returns a list of batches
-            # Since batch_size=1, we have a list with 1 element
-            batch = batch_list[0] if isinstance(batch_list, list) else batch_list
+        # Configure splits based on extraction mode
+        if split == "full":
+            train_val_split = 0.0
+            train_test_split = 0.0
+            actual_test_dir = None
+        elif split == "test":
+            train_val_split = 0.0
+            train_test_split = 0.2 if not test_dir else 0.0
+            actual_test_dir = test_dir
+        elif split == "val":
+            train_val_split = 0.2
+            train_test_split = 0.2 if not test_dir else 0.0
+            actual_test_dir = test_dir
+        elif split == "train":
+            train_val_split = 0.2
+            train_test_split = 0.2 if not test_dir else 0.0
+            actual_test_dir = test_dir
+        else:
+            raise ValueError(f"Invalid split: {split}")
 
-            # Get volume from batch (combined modalities)
-            volume = batch['volume'].to(device_obj)
+        data_module = FinetuningDataModule(
+            data_dir=str(data_dir),
+            train_transforms=val_transforms,
+            val_transforms=val_transforms,
+            modalities=[modality_name],  # Single modality!
+            scan_type="numpy",
+            target="mask",
+            require_all_labels=False,
+            require_all_scans=True,
+            test_dir=str(actual_test_dir) if actual_test_dir else None,
+            train_val_split=train_val_split,
+            train_test_split=train_test_split,
+            batch_size=1,
+            num_workers=0,
+            seed=seed,
+        )
 
-            # Add channel dimension if needed (B, D, H, W) -> (B, 1, D, H, W)
-            if volume.ndim == 4:
-                volume = volume.unsqueeze(1)
+        # Setup and get appropriate dataloader
+        if split == "full":
+            data_module.setup('predict')
+            loader = data_module.predict_dataloader()
+            dataset_name = "full dataset"
+        elif split == "test":
+            data_module.setup('test')
+            loader = data_module.test_dataloader()
+            dataset_name = "test set"
+        elif split == "val":
+            data_module.setup('fit')
+            loader = data_module.val_dataloader()
+            dataset_name = "validation set"
+        elif split == "train":
+            data_module.setup('fit')
+            loader = data_module.train_dataloader()
+            dataset_name = "training set"
 
-            # Get metadata from batch
-            patient_id = batch.get('patient', f'unknown_{batch_idx}')
-            session_id = batch.get('session', 'unknown')
+        print(f"✓ Dataset size: {len(loader.dataset)} samples")
+        print(f"✓ Extracting from: {dataset_name}")
 
-            # Convert to string (handle tensor, list, or string)
-            if torch.is_tensor(patient_id):
-                patient_id = str(patient_id.item())
-            elif isinstance(patient_id, list):
-                patient_id = str(patient_id[0]) if len(patient_id) > 0 else f'unknown_{batch_idx}'
-            else:
-                patient_id = str(patient_id)
+        # Extract embeddings for this modality
+        total_samples = len(loader.dataset)
+        print(f"\nExtracting embeddings for {modality_name.upper()}...")
+        print(f"  Total samples: {total_samples}")
+        print(f"  Device: {device_obj}")
+        print(f"  Embedding dimension: 768\n")
 
-            if torch.is_tensor(session_id):
-                session_id = str(session_id.item())
-            elif isinstance(session_id, list):
-                session_id = str(session_id[0]) if len(session_id) > 0 else 'unknown'
-            else:
-                session_id = str(session_id)
+        all_embeddings = []
+        all_filenames = []
+        all_patient_ids = []
+        all_session_ids = []
 
-            # Extract modality information from dataset entries
-            if hasattr(dataset, 'data_entries') and batch_idx < len(dataset.data_entries):
-                entry = dataset.data_entries[batch_idx]
-                # Get all modality keys from entry
-                mod_keys = [k for k in entry.keys() if k in modalities]
-                if mod_keys:
-                    # Use first available modality as identifier
-                    path = entry[mod_keys[0]]
-                    filename = Path(path).name
-                    # Modality is the combined string
-                    modality = '+'.join(sorted(mod_keys))
+        dataset = loader.dataset
+
+        with torch.no_grad():
+            for batch_idx, batch_list in enumerate(tqdm(loader, desc=f'{modality_name.upper()}', unit='sample')):
+                # MONAI's list_data_collate returns a list of batches
+                batch = batch_list[0] if isinstance(batch_list, list) else batch_list
+
+                # Get volume from batch
+                volume = batch['volume'].to(device_obj)
+
+                # Add channel dimension if needed (B, D, H, W) -> (B, 1, D, H, W)
+                if volume.ndim == 4:
+                    volume = volume.unsqueeze(1)
+
+                # Get metadata from batch
+                patient_id = batch.get('patient', f'unknown_{batch_idx}')
+                session_id = batch.get('session', 'unknown')
+
+                # Convert to string
+                if torch.is_tensor(patient_id):
+                    patient_id = str(patient_id.item())
+                elif isinstance(patient_id, list):
+                    patient_id = str(patient_id[0]) if len(patient_id) > 0 else f'unknown_{batch_idx}'
                 else:
-                    filename = f'sample_{batch_idx}.npy'
-                    modality = '+'.join(sorted(modalities))
-            else:
-                filename = f'sample_{batch_idx}.npy'
-                modality = '+'.join(sorted(modalities))
+                    patient_id = str(patient_id)
 
-            # Extract features from encoder (before probing layer)
-            if hasattr(model, 'encoder'):
-                features = model.encoder(volume)[-1]  # (B, 768, D, H, W)
-            elif hasattr(model, 'model') and hasattr(model.model, 'encoder'):
-                features = model.model.encoder(volume)[-1]
-            else:
-                raise AttributeError("Model does not have expected encoder structure")
+                if torch.is_tensor(session_id):
+                    session_id = str(session_id.item())
+                elif isinstance(session_id, list):
+                    session_id = str(session_id[0]) if len(session_id) > 0 else 'unknown'
+                else:
+                    session_id = str(session_id)
 
-            # Global average pooling
-            features_pooled = F.adaptive_avg_pool3d(features, 1)  # (B, 768, 1, 1, 1)
-            features_pooled = features_pooled.flatten(1)  # (B, 768)
+                # Extract filename from dataset
+                if hasattr(dataset, 'data_entries') and batch_idx < len(dataset.data_entries):
+                    entry = dataset.data_entries[batch_idx]
+                    if modality_name in entry:
+                        filename = Path(entry[modality_name]).name
+                    else:
+                        filename = f'sample_{batch_idx}_{modality_name}.npy'
+                else:
+                    filename = f'sample_{batch_idx}_{modality_name}.npy'
 
-            # Store
-            all_embeddings.append(features_pooled.cpu())
-            all_filenames.append(filename)
-            all_modalities.append(modality)
-            all_patient_ids.append(patient_id)
-            all_session_ids.append(session_id)
+                # Extract features from encoder
+                if hasattr(model, 'encoder'):
+                    features = model.encoder(volume)[-1]  # (B, 768, D, H, W)
+                elif hasattr(model, 'model') and hasattr(model.model, 'encoder'):
+                    features = model.model.encoder(volume)[-1]
+                else:
+                    raise AttributeError("Model does not have expected encoder structure")
 
-            # Milestone logging (every 25%)
-            progress = (batch_idx + 1) / total_samples
-            if (batch_idx + 1) % max(1, total_samples // 4) == 0:
-                print(f"\n[{progress*100:.0f}%] Processed {batch_idx + 1}/{total_samples} samples")
-                print(f"  Current modalities seen: {set(all_modalities)}")
-                print(f"  Unique patients so far: {len(set(all_patient_ids))}")
+                # Global average pooling
+                features_pooled = F.adaptive_avg_pool3d(features, 1)  # (B, 768, 1, 1, 1)
+                features_pooled = features_pooled.flatten(1)  # (B, 768)
 
-    # Concatenate all embeddings into single tensor
-    embeddings = torch.cat(all_embeddings, dim=0)  # (N, 768)
+                # Store
+                all_embeddings.append(features_pooled.cpu())
+                all_filenames.append(filename)
+                all_patient_ids.append(patient_id)
+                all_session_ids.append(session_id)
 
-    # Create metadata DataFrame
-    metadata = pd.DataFrame({
-        'filename': all_filenames,
-        'embedding_index': range(len(all_filenames)),
-        'modality': all_modalities,
-        'patient_id': all_patient_ids,
-        'session_id': all_session_ids,
-    })
+        # Concatenate embeddings for this modality
+        if len(all_embeddings) == 0:
+            print(f"⚠️  WARNING: No samples found for modality {modality_name}")
+            continue
 
-    print(f"\nExtraction complete!")
-    print(f"  Embeddings shape: {embeddings.shape}")
+        embeddings_modality = torch.cat(all_embeddings, dim=0)  # (N, 768)
+
+        # Create metadata for this modality
+        metadata_modality = pd.DataFrame({
+            'filename': all_filenames,
+            'modality': [modality_name] * len(all_filenames),
+            'patient_id': all_patient_ids,
+            'session_id': all_session_ids,
+        })
+
+        print(f"✓ Extracted {len(embeddings_modality)} embeddings for {modality_name.upper()}")
+        print(f"  Unique patients: {metadata_modality['patient_id'].nunique()}\n")
+
+        # Add to global collections
+        all_embeddings_global.append(embeddings_modality)
+        all_metadata_global.append(metadata_modality)
+
+    # Combine all modalities
+    print(f"\n{'='*80}")
+    print(f"STEP 3/4: COMBINING ALL MODALITIES")
+    print(f"{'='*80}")
+
+    if len(all_embeddings_global) == 0:
+        raise RuntimeError("No embeddings extracted! Check your data directory and modalities.")
+
+    embeddings = torch.cat(all_embeddings_global, dim=0)  # (N_total, 768)
+    metadata = pd.concat(all_metadata_global, ignore_index=True)
+
+    # Add embedding index
+    metadata.insert(1, 'embedding_index', range(len(metadata)))
+
+    print(f"\nCombined results:")
+    print(f"  Total embeddings: {embeddings.shape[0]}")
+    print(f"  Embeddings per modality:")
+    for mod in modalities:
+        count = (metadata['modality'] == mod).sum()
+        print(f"    - {mod.upper()}: {count}")
     print(f"  Unique patients: {metadata['patient_id'].nunique()}")
-    print(f"  Unique modalities: {metadata['modality'].nunique()}")
-    print(f"  Modalities: {sorted(metadata['modality'].unique())}")
+    print(f"  Unique sessions: {metadata['session_id'].nunique()}")
 
     return embeddings, metadata
 
