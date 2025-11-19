@@ -1,4 +1,4 @@
-"""
+r"""
 Extract embeddings from pretrained checkpoint for validation dataset.
 
 Outputs:

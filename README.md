@@ -1,5 +1,7 @@
 # UMBRA
 
+[Pre-print][https://www.arxiv.org/abs/2511.11311], Checkpoints[https://huggingface.co/pkoutsouvelis/mri-foundation_fomo60k/tree/main]
+
 ## Data Directory Structure
 
 The data should be organized in a hierarchical structure:
@@ -157,8 +159,3 @@ Unlike the original MoCo paper (which assumes each sample is independent), this 
 - ✅ Only true anatomical differences between patients drive the learning
 
 This is essential for medical imaging where longitudinal follow-up is common and you want representations that generalize across time points.
-
-
-
-Paper: arxiv
-Github code: 
