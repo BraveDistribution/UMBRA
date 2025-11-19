@@ -1,6 +1,7 @@
 # UMBRA
 
-[Pre-print][https://www.arxiv.org/abs/2511.11311], Checkpoints[https://huggingface.co/pkoutsouvelis/mri-foundation_fomo60k/tree/main]
+Paper (pre-print) : https://www.arxiv.org/abs/2511.11311
+Checkpoints: https://huggingface.co/pkoutsouvelis/mri-foundation_fomo60k/tree/main
 
 ## Data Directory Structure
 
