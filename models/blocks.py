@@ -267,5 +267,3 @@ class PatchEmbedWithMask(nn.Module):
         else:
             raise RuntimeError("Unexpected PatchEmbed output rank.")
         return grid
-
-        
